@@ -14,13 +14,13 @@ const CustomerFormModal = ({
     phones: [""], // Changed to array for multiple phones
     customerType: "commercial",
     businessType: "",
-    primaryLocation: {
+    // **SIMPLIFIED: Only one location instead of primary + additional**
+    location: {
       streetAddress: "",
       city: "",
       state: "PR",
       postalCode: "",
     },
-    additionalLocations: [],
   });
 
   const [loading, setLoading] = useState(false);
@@ -28,44 +28,71 @@ const CustomerFormModal = ({
 
   // Initialize form data when customer changes
   useEffect(() => {
+    console.log("🔍 CustomerFormModal: Initializing form data", {
+      customer,
+      mode,
+      isOpen,
+    });
+
     if (customer && mode === "edit") {
-      const primaryLoc = customer.locations?.[0] || {};
-      const additionalLocs = customer.locations?.slice(1) || [];
+      // Get the first location for editing
+      const firstLocation = customer.locations?.[0] || {};
+
+      const initEmails =
+        customer.emails && customer.emails.length > 0
+          ? customer.emails
+          : customer.email
+          ? [customer.email]
+          : [""];
+
+      const initPhones =
+        customer.phones && customer.phones.length > 0
+          ? customer.phones
+          : customer.phone
+          ? [customer.phone]
+          : [""];
+
+      console.log("📧 Email data:", {
+        customerEmails: customer.emails,
+        customerEmail: customer.email,
+        initEmails,
+      });
+      console.log("📱 Phone data:", {
+        customerPhones: customer.phones,
+        customerPhone: customer.phone,
+        initPhones,
+      });
 
       setFormData({
         name: customer.name || "",
-        emails: customer.email ? [customer.email] : [""], // Convert single email to array
-        phones: customer.phone ? [customer.phone] : [""], // Convert single phone to array
+        emails: initEmails,
+        phones: initPhones,
         customerType: customer.customer_type || "commercial",
         businessType: customer.business_type || "",
-        primaryLocation: {
-          streetAddress: primaryLoc.street_address || primaryLoc.address || "",
-          city: primaryLoc.city || "",
-          state: primaryLoc.state || "PR",
-          postalCode: primaryLoc.postal_code || primaryLoc.zip_code || "",
+        // **SIMPLIFIED: Single location**
+        location: {
+          streetAddress:
+            firstLocation.street_address || firstLocation.address || "",
+          city: firstLocation.city || "",
+          state: firstLocation.state || "PR",
+          postalCode: firstLocation.postal_code || firstLocation.zip_code || "",
         },
-        additionalLocations: additionalLocs.map((loc) => ({
-          streetAddress: loc.street_address || loc.address || "",
-          city: loc.city || "",
-          state: loc.state || "PR",
-          postalCode: loc.postal_code || loc.zip_code || "",
-        })),
       });
     } else {
       // Reset for create mode
+      console.log("🆕 Creating new customer - resetting form");
       setFormData({
         name: "",
         emails: [""],
         phones: [""],
         customerType: "commercial",
         businessType: "",
-        primaryLocation: {
+        location: {
           streetAddress: "",
           city: "",
           state: "PR",
           postalCode: "",
         },
-        additionalLocations: [],
       });
     }
   }, [customer, mode, isOpen]);
@@ -75,6 +102,17 @@ const CustomerFormModal = ({
     setFormData((prev) => ({
       ...prev,
       [name]: value,
+    }));
+  };
+
+  // Handle location changes
+  const handleLocationChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      location: {
+        ...prev.location,
+        [field]: value,
+      },
     }));
   };
 
@@ -132,7 +170,6 @@ const CustomerFormModal = ({
     setError("");
 
     try {
-      // Basic validation
       if (!formData.name.trim()) {
         throw new Error("Customer name is required");
       }
@@ -145,42 +182,28 @@ const CustomerFormModal = ({
         }
       }
 
-      // Prepare locations data
+      // **SIMPLIFIED: Prepare single location if provided**
       const locations = [];
-
-      // Add primary location if provided
-      if (
-        formData.primaryLocation.streetAddress ||
-        formData.primaryLocation.city
-      ) {
+      if (formData.location.streetAddress || formData.location.city) {
         locations.push({
-          ...formData.primaryLocation,
+          ...formData.location,
           addressType: "primary",
           isPrimary: true,
         });
       }
 
-      // Add additional locations
-      formData.additionalLocations.forEach((location, index) => {
-        if (location.streetAddress || location.city) {
-          locations.push({
-            ...location,
-            addressType: "service",
-            isPrimary: false,
-          });
-        }
-      });
-
       const customerData = {
         name: formData.name.trim(),
-        email: validEmails[0] || null, // Use first email for backward compatibility
-        phone: formData.phones.filter((phone) => phone.trim())[0] || null, // Use first phone for backward compatibility
-        emails: validEmails, // Store all emails
-        phones: formData.phones.filter((phone) => phone.trim()), // Store all phones
+        email: validEmails[0] || null,
+        phone: formData.phones.filter((phone) => phone.trim())[0] || null,
+        emails: validEmails,
+        phones: formData.phones.filter((phone) => phone.trim()),
         customerType: formData.customerType,
         businessType: formData.businessType?.trim() || null,
         locations,
       };
+
+      console.log("💾 Saving customer data:", customerData);
 
       let result;
       if (mode === "edit" && customer) {
@@ -196,39 +219,6 @@ const CustomerFormModal = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const addAdditionalLocation = () => {
-    setFormData((prev) => ({
-      ...prev,
-      additionalLocations: [
-        ...prev.additionalLocations,
-        {
-          streetAddress: "",
-          city: "",
-          state: "PR",
-          postalCode: "",
-        },
-      ],
-    }));
-  };
-
-  const removeAdditionalLocation = (index) => {
-    setFormData((prev) => ({
-      ...prev,
-      additionalLocations: prev.additionalLocations.filter(
-        (_, i) => i !== index
-      ),
-    }));
-  };
-
-  const updateAdditionalLocation = (index, field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      additionalLocations: prev.additionalLocations.map((loc, i) =>
-        i === index ? { ...loc, [field]: value } : loc
-      ),
-    }));
   };
 
   if (!isOpen) return null;
@@ -323,7 +313,7 @@ const CustomerFormModal = ({
                     value={phone}
                     onChange={(e) => handlePhoneChange(index, e.target.value)}
                     disabled={loading}
-                    placeholder="787-555-0123"
+                    placeholder="787-555-0000"
                   />
                 </div>
               </div>
@@ -338,54 +328,43 @@ const CustomerFormModal = ({
             </button>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="customerType">Customer Type</label>
-              <select
-                id="customerType"
-                name="customerType"
-                value={formData.customerType}
-                onChange={handleInputChange}
-                disabled={loading}
-              >
-                <option value="commercial">Commercial</option>
-                <option value="residential">Residential</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="businessType">Business Type</label>
-              <input
-                type="text"
-                id="businessType"
-                name="businessType"
-                value={formData.businessType}
-                onChange={handleInputChange}
-                disabled={loading}
-                placeholder="e.g., Restaurant, Office, Store"
-              />
-            </div>
+          <div className="form-group">
+            <label htmlFor="customerType">Customer Type</label>
+            <select
+              id="customerType"
+              name="customerType"
+              value={formData.customerType}
+              onChange={handleInputChange}
+              disabled={loading}
+            >
+              <option value="commercial">Commercial</option>
+              <option value="residential">Residential</option>
+            </select>
           </div>
 
-          {/* Primary Location Section */}
-          <div className="locations-section">
-            <h3>Primary Location</h3>
+          <div className="form-group">
+            <label htmlFor="businessType">Business Type</label>
+            <input
+              type="text"
+              id="businessType"
+              name="businessType"
+              value={formData.businessType}
+              onChange={handleInputChange}
+              disabled={loading}
+              placeholder="e.g., Restaurant, Retail, Hotel"
+            />
+          </div>
 
+          {/* **SIMPLIFIED: Single Location Section** */}
+          <div className="location-section">
+            <h4>Location</h4>
             <div className="form-group">
-              <label htmlFor="streetAddress">Street Address</label>
+              <label>Street Address</label>
               <input
                 type="text"
-                id="streetAddress"
-                name="streetAddress"
-                value={formData.primaryLocation?.streetAddress || ""}
+                value={formData.location.streetAddress}
                 onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    primaryLocation: {
-                      ...prev.primaryLocation,
-                      streetAddress: e.target.value,
-                    },
-                  }))
+                  handleLocationChange("streetAddress", e.target.value)
                 }
                 disabled={loading}
                 placeholder="123 Main Street"
@@ -394,170 +373,44 @@ const CustomerFormModal = ({
 
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="city">City</label>
+                <label>City</label>
                 <input
                   type="text"
-                  id="city"
-                  name="city"
-                  value={formData.primaryLocation?.city || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      primaryLocation: {
-                        ...prev.primaryLocation,
-                        city: e.target.value,
-                      },
-                    }))
-                  }
+                  value={formData.location.city}
+                  onChange={(e) => handleLocationChange("city", e.target.value)}
                   disabled={loading}
                   placeholder="San Juan"
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="state">State</label>
-                <input
-                  type="text"
-                  id="state"
-                  name="state"
-                  value={formData.primaryLocation?.state || "PR"}
+                <label>State</label>
+                <select
+                  value={formData.location.state}
                   onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      primaryLocation: {
-                        ...prev.primaryLocation,
-                        state: e.target.value,
-                      },
-                    }))
+                    handleLocationChange("state", e.target.value)
                   }
                   disabled={loading}
-                  placeholder="PR"
+                >
+                  <option value="PR">Puerto Rico</option>
+                  <option value="FL">Florida</option>
+                  <option value="NY">New York</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Postal Code</label>
+                <input
+                  type="text"
+                  value={formData.location.postalCode}
+                  onChange={(e) =>
+                    handleLocationChange("postalCode", e.target.value)
+                  }
+                  disabled={loading}
+                  placeholder="00926"
                 />
               </div>
             </div>
-
-            <div className="form-group">
-              <label htmlFor="postalCode">Postal Code</label>
-              <input
-                type="text"
-                id="postalCode"
-                name="postalCode"
-                value={formData.primaryLocation?.postalCode || ""}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    primaryLocation: {
-                      ...prev.primaryLocation,
-                      postalCode: e.target.value,
-                    },
-                  }))
-                }
-                disabled={loading}
-                placeholder="00901"
-              />
-            </div>
-
-            {/* Additional Locations - IMPROVED STYLING */}
-            {formData.additionalLocations &&
-              formData.additionalLocations.length > 0 && (
-                <div className="additional-locations">
-                  <h4>Additional Locations</h4>
-                  {formData.additionalLocations.map((location, index) => (
-                    <div key={index} className="additional-location">
-                      <div className="location-header">
-                        <span>Location #{index + 2}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeAdditionalLocation(index)}
-                          className="remove-location-btn"
-                          disabled={loading}
-                        >
-                          Remove
-                        </button>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Street Address</label>
-                        <input
-                          type="text"
-                          value={location.streetAddress || ""}
-                          onChange={(e) =>
-                            updateAdditionalLocation(
-                              index,
-                              "streetAddress",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Street Address"
-                          disabled={loading}
-                        />
-                      </div>
-
-                      <div className="form-row">
-                        <div className="form-group">
-                          <label>City</label>
-                          <input
-                            type="text"
-                            value={location.city || ""}
-                            onChange={(e) =>
-                              updateAdditionalLocation(
-                                index,
-                                "city",
-                                e.target.value
-                              )
-                            }
-                            placeholder="City"
-                            disabled={loading}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label>State</label>
-                          <input
-                            type="text"
-                            value={location.state || "PR"}
-                            onChange={(e) =>
-                              updateAdditionalLocation(
-                                index,
-                                "state",
-                                e.target.value
-                              )
-                            }
-                            placeholder="State"
-                            disabled={loading}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Postal Code</label>
-                        <input
-                          type="text"
-                          value={location.postalCode || ""}
-                          onChange={(e) =>
-                            updateAdditionalLocation(
-                              index,
-                              "postalCode",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Postal Code"
-                          disabled={loading}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-            <button
-              type="button"
-              onClick={addAdditionalLocation}
-              className="add-location-btn"
-              disabled={loading}
-            >
-              + Add Another Location
-            </button>
           </div>
 
           <div className="modal-actions">
@@ -598,7 +451,7 @@ const CustomerFormModal = ({
           background: white;
           border-radius: 8px;
           width: 90%;
-          max-width: 700px;
+          max-width: 600px;
           max-height: 90vh;
           overflow-y: auto;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
@@ -653,13 +506,7 @@ const CustomerFormModal = ({
         }
 
         .form-group {
-          margin-bottom: 20px;
-        }
-
-        .form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 15px;
+          margin-bottom: 15px;
         }
 
         .form-group label {
@@ -672,10 +519,11 @@ const CustomerFormModal = ({
         .form-group input,
         .form-group select {
           width: 100%;
-          padding: 10px;
+          padding: 10px 12px;
           border: 1px solid #ddd;
-          border-radius: 4px;
+          border-radius: 6px;
           font-size: 14px;
+          transition: border-color 0.2s;
         }
 
         .form-group input:focus,
@@ -685,27 +533,34 @@ const CustomerFormModal = ({
           box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
         }
 
-        /* Contact Section Styles */
-        .contact-section {
-          margin: 25px 0;
-          padding: 20px;
+        .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 15px;
+        }
+
+        .contact-section,
+        .location-section {
+          margin-bottom: 25px;
+          padding: 15px;
           background: #f8f9fa;
-          border-radius: 8px;
+          border-radius: 6px;
           border: 1px solid #e9ecef;
         }
 
-        .contact-section h4 {
+        .contact-section h4,
+        .location-section h4 {
           margin: 0 0 15px 0;
-          color: #333;
+          color: #495057;
           font-size: 16px;
         }
 
         .contact-item {
+          margin-bottom: 15px;
+          padding: 12px;
           background: white;
           border: 1px solid #dee2e6;
           border-radius: 6px;
-          padding: 15px;
-          margin-bottom: 10px;
         }
 
         .contact-header {
@@ -713,9 +568,11 @@ const CustomerFormModal = ({
           justify-content: space-between;
           align-items: center;
           margin-bottom: 10px;
+        }
+
+        .contact-header span {
           font-weight: 500;
           color: #495057;
-          font-size: 14px;
         }
 
         .remove-contact-btn {
@@ -725,7 +582,7 @@ const CustomerFormModal = ({
           padding: 4px 8px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 11px;
+          font-size: 12px;
           transition: background 0.2s;
         }
 
@@ -734,73 +591,6 @@ const CustomerFormModal = ({
         }
 
         .add-contact-btn {
-          background: #28a745;
-          color: white;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          transition: background 0.2s;
-        }
-
-        .add-contact-btn:hover {
-          background: #218838;
-        }
-
-        /* Location Section Styles */
-        .locations-section {
-          margin-top: 30px;
-          padding-top: 20px;
-          border-top: 1px solid #eee;
-        }
-
-        .locations-section h3,
-        .locations-section h4 {
-          margin: 0 0 15px 0;
-          color: #333;
-        }
-
-        .additional-locations {
-          margin-top: 20px;
-        }
-
-        .additional-location {
-          background: #f8f9fa;
-          border: 1px solid #e9ecef;
-          border-radius: 8px;
-          padding: 20px;
-          margin-bottom: 15px;
-        }
-
-        .location-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          font-weight: 500;
-          color: #495057;
-          padding-bottom: 10px;
-          border-bottom: 1px solid #dee2e6;
-        }
-
-        .remove-location-btn {
-          background: #dc3545;
-          color: white;
-          border: none;
-          padding: 6px 12px;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 12px;
-          transition: background 0.2s;
-        }
-
-        .remove-location-btn:hover {
-          background: #c82333;
-        }
-
-        .add-location-btn {
           background: #28a745;
           color: white;
           border: none;
@@ -813,7 +603,7 @@ const CustomerFormModal = ({
           transition: background 0.2s;
         }
 
-        .add-location-btn:hover {
+        .add-contact-btn:hover {
           background: #218838;
         }
 
@@ -864,15 +654,15 @@ const CustomerFormModal = ({
           cursor: not-allowed;
         }
 
-        .submit-btn:disabled:hover,
-        .cancel-btn:disabled:hover {
-          background: #007bff;
-          border-color: #007bff;
-        }
+        @media (max-width: 768px) {
+          .form-row {
+            grid-template-columns: 1fr;
+          }
 
-        .cancel-btn:disabled:hover {
-          background: #f8f9fa;
-          border-color: #dee2e6;
+          .modal-content {
+            width: 95%;
+            margin: 10px;
+          }
         }
       `}</style>
     </div>

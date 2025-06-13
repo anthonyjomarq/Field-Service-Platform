@@ -52,7 +52,7 @@ class DatabaseService {
       await this.pool.query(schema);
       console.log("✅ Database tables created/verified");
 
-      // Ensure contact_info column exists for multiple contacts support
+      // **FIX 4: Ensure contact_info column exists for multiple contacts support**
       await this.ensureContactInfoColumn();
 
       // Run initial data
@@ -70,7 +70,7 @@ class DatabaseService {
     }
   }
 
-  // Ensure contact_info column exists for multiple emails/phones support
+  // **FIX 4: Ensure contact_info column exists for multiple emails/phones support**
   async ensureContactInfoColumn() {
     try {
       // Add contact_info column if it doesn't exist
@@ -91,7 +91,7 @@ class DatabaseService {
     }
   }
 
-  // Helper method to check if contact_info column exists
+  // **FIX 4: Helper method to check if contact_info column exists**
   async checkContactInfoColumn(client = null) {
     try {
       const useClient = client || this.pool;
@@ -106,7 +106,7 @@ class DatabaseService {
     }
   }
 
-  // Helper method to parse customer contact info
+  // **FIX 4: Helper method to parse customer contact info**
   parseCustomerContactInfo(customer) {
     if (customer.contact_info) {
       try {
@@ -153,10 +153,10 @@ class DatabaseService {
     try {
       await client.query("BEGIN");
 
-      // Prepare contact information JSON
+      // **FIX 4: Prepare contact information JSON with proper fallbacks**
       const contactInfo = {
-        emails: emails || (email ? [email] : []),
-        phones: phones || (phone ? [phone] : []),
+        emails: emails && emails.length > 0 ? emails : email ? [email] : [],
+        phones: phones && phones.length > 0 ? phones : phone ? [phone] : [],
       };
 
       // Check if contact_info column exists
@@ -218,6 +218,8 @@ class DatabaseService {
       }
 
       await client.query("COMMIT");
+
+      // **FIX 2: Return fresh data with proper counts**
       return await this.getCustomerById(customer.id);
     } catch (error) {
       await client.query("ROLLBACK");
@@ -227,6 +229,7 @@ class DatabaseService {
     }
   }
 
+  // **FIX 2: Enhanced getCustomers with proper location/equipment counts**
   async getCustomers(
     companyId = "550e8400-e29b-41d4-a716-446655440000",
     filters = {}
@@ -273,23 +276,30 @@ class DatabaseService {
       params.push(filters.limit);
     }
 
+    console.log("🔍 Executing getCustomers query:", { query, params });
     const result = await this.pool.query(query, params);
 
-    // Parse contact info for each customer
+    // **FIX 4: Parse contact info for each customer**
     return result.rows.map((customer) => {
       this.parseCustomerContactInfo(customer);
       return customer;
     });
   }
 
+  // **FIX 2: Enhanced getCustomerById with proper location/equipment counts**
   async getCustomerById(customerId) {
-    // Get customer
+    // Get customer with counts
     const customerResult = await this.pool.query(
       `
-      SELECT c.*, u.first_name as created_by_name, u.last_name as created_by_lastname
+      SELECT c.*, u.first_name as created_by_name, u.last_name as created_by_lastname,
+             COUNT(DISTINCT cl.id) as location_count,
+             COUNT(DISTINCT ce.id) as equipment_count
       FROM customers c
       LEFT JOIN users u ON c.created_by = u.id
+      LEFT JOIN customer_locations cl ON c.id = cl.customer_id AND cl.is_active = TRUE
+      LEFT JOIN customer_equipment ce ON c.id = ce.customer_id
       WHERE c.id = $1 AND c.is_active = TRUE
+      GROUP BY c.id, u.first_name, u.last_name
       `,
       [customerId]
     );
@@ -298,7 +308,7 @@ class DatabaseService {
 
     const customer = customerResult.rows[0];
 
-    // Parse contact info and add to customer object
+    // **FIX 4: Parse contact info and add to customer object**
     this.parseCustomerContactInfo(customer);
 
     // Get locations with spatial data
@@ -332,20 +342,25 @@ class DatabaseService {
     };
   }
 
+  // **FIX 1 & 4: Enhanced updateCustomer with proper contact handling**
   async updateCustomer(customerId, customerData) {
     const { name, email, phone, emails, phones, customerType, businessType } =
       customerData;
+
+    console.log("📝 Updating customer:", { customerId, customerData });
 
     // Check if contact_info column exists
     const hasContactInfo = await this.checkContactInfoColumn();
 
     let result;
     if (hasContactInfo) {
-      // Prepare contact information JSON
+      // **FIX 1: Prepare contact information JSON with enhanced logic**
       const contactInfo = {
-        emails: emails || (email ? [email] : []),
-        phones: phones || (phone ? [phone] : []),
+        emails: emails && emails.length > 0 ? emails : email ? [email] : [],
+        phones: phones && phones.length > 0 ? phones : phone ? [phone] : [],
       };
+
+      console.log("💾 Saving contact info:", contactInfo);
 
       result = await this.pool.query(
         `
@@ -398,6 +413,9 @@ class DatabaseService {
     }
 
     if (result.rows.length === 0) return null;
+
+    // **FIX 2: Return fresh data with updated counts**
+    console.log("✅ Customer updated, returning fresh data");
     return await this.getCustomerById(customerId);
   }
 
@@ -647,51 +665,80 @@ class DatabaseService {
         SELECT c.name as customer_name, cl.*,
                ST_X(cl.geom) as longitude,
                ST_Y(cl.geom) as latitude
-        FROM customers c
-        JOIN customer_locations cl ON c.id = cl.customer_id
-        WHERE cl.geom IS NOT NULL 
-          AND cl.is_active = TRUE 
+        FROM customer_locations cl
+        JOIN customers c ON cl.customer_id = c.id
+        WHERE cl.is_active = TRUE 
           AND c.is_active = TRUE
-        ORDER BY c.name ASC
+          AND cl.geom IS NOT NULL
+        ORDER BY cl.is_primary DESC, c.name ASC
       `;
+
       const result = await this.pool.query(query);
       return result.rows;
     } else {
-      // Get specific customers
+      // Get locations for specific customers
+      const placeholders = customerIds
+        .map((_, index) => `$${index + 1}`)
+        .join(",");
       const query = `
         SELECT c.name as customer_name, cl.*,
                ST_X(cl.geom) as longitude,
                ST_Y(cl.geom) as latitude
-        FROM customers c
-        JOIN customer_locations cl ON c.id = cl.customer_id
-        WHERE c.id = ANY($1)
-          AND cl.geom IS NOT NULL 
+        FROM customer_locations cl
+        JOIN customers c ON cl.customer_id = c.id
+        WHERE cl.customer_id IN (${placeholders})
           AND cl.is_active = TRUE 
           AND c.is_active = TRUE
-        ORDER BY c.name ASC
+          AND cl.geom IS NOT NULL
+        ORDER BY cl.is_primary DESC, c.name ASC
       `;
-      const result = await this.pool.query(query, [customerIds]);
+
+      const result = await this.pool.query(query, customerIds);
       return result.rows;
     }
   }
 
-  async calculateDistanceMatrix(locationIds) {
-    const query = `
-      SELECT 
-        a.id as origin_id,
-        b.id as destination_id,
-        ST_Distance(a.geom::geography, b.geom::geography) / 1000 as distance_km,
-        a.customer_id as origin_customer_id,
-        b.customer_id as destination_customer_id
-      FROM customer_locations a
-      CROSS JOIN customer_locations b
-      WHERE a.id = ANY($1) AND b.id = ANY($1)
-        AND a.geom IS NOT NULL AND b.geom IS NOT NULL
-      ORDER BY a.id, b.id
-    `;
+  // ============================================================================
+  // EQUIPMENT OPERATIONS
+  // ============================================================================
 
-    const result = await this.pool.query(query, [locationIds]);
-    return result.rows;
+  async createCustomerEquipment(customerId, equipmentData) {
+    const {
+      locationId,
+      equipmentType,
+      brand,
+      model,
+      serialNumber,
+      installDate,
+      warrantyExpiry,
+      serviceIntervalDays = 90,
+      notes,
+    } = equipmentData;
+
+    const result = await this.pool.query(
+      `
+      INSERT INTO customer_equipment (
+        customer_id, location_id, equipment_type, brand, model, serial_number,
+        install_date, warranty_expiry, service_interval_days, notes, status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+      RETURNING *
+      `,
+      [
+        customerId,
+        locationId,
+        equipmentType,
+        brand,
+        model,
+        serialNumber,
+        installDate,
+        warrantyExpiry,
+        serviceIntervalDays,
+        notes,
+      ]
+    );
+
+    return result.rows[0];
   }
 
   // ============================================================================
@@ -699,21 +746,30 @@ class DatabaseService {
   // ============================================================================
 
   async createUser(userData) {
-    const { email, passwordHash, firstName, lastName, role } = userData;
+    const {
+      firstName,
+      lastName,
+      email,
+      hashedPassword,
+      role = "user",
+    } = userData;
 
     const result = await this.pool.query(
       `
-      INSERT INTO users (company_id, email, password_hash, first_name, last_name, role)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, company_id, email, first_name, last_name, role, is_active, created_at
+      INSERT INTO users (
+        company_id, first_name, last_name, email, password_hash, role, is_active
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, first_name, last_name, email, role, created_at
       `,
       [
-        "550e8400-e29b-41d4-a716-446655440000",
-        email.toLowerCase(),
-        passwordHash,
+        "550e8400-e29b-41d4-a716-446655440000", // Default company ID
         firstName,
         lastName,
-        role || "technician",
+        email,
+        hashedPassword,
+        role,
+        true,
       ]
     );
 
@@ -723,12 +779,11 @@ class DatabaseService {
   async getUserByEmail(email) {
     const result = await this.pool.query(
       `
-      SELECT u.*, c.name as company_name
-      FROM users u
-      LEFT JOIN companies c ON u.company_id = c.id
-      WHERE u.email = $1 AND u.is_active = TRUE
+      SELECT id, first_name, last_name, email, password_hash, role, is_active
+      FROM users 
+      WHERE email = $1 AND is_active = TRUE
       `,
-      [email.toLowerCase()]
+      [email]
     );
 
     return result.rows[0] || null;
@@ -737,10 +792,9 @@ class DatabaseService {
   async getUserById(userId) {
     const result = await this.pool.query(
       `
-      SELECT u.*, c.name as company_name
-      FROM users u
-      LEFT JOIN companies c ON u.company_id = c.id
-      WHERE u.id = $1 AND u.is_active = TRUE
+      SELECT id, first_name, last_name, email, role, created_at, is_active
+      FROM users 
+      WHERE id = $1 AND is_active = TRUE
       `,
       [userId]
     );
@@ -748,72 +802,67 @@ class DatabaseService {
     return result.rows[0] || null;
   }
 
-  async getUsers(companyId = "550e8400-e29b-41d4-a716-446655440000") {
+  // ============================================================================
+  // ROUTE CACHE OPERATIONS
+  // ============================================================================
+
+  async getRouteCache(routeKey) {
     const result = await this.pool.query(
       `
-      SELECT id, company_id, email, first_name, last_name, role, is_active, last_login, created_at
-      FROM users 
-      WHERE company_id = $1 AND is_active = TRUE
-      ORDER BY created_at DESC
+      SELECT route_data, distance_matrix 
+      FROM route_cache 
+      WHERE route_key = $1 AND expires_at > NOW()
       `,
-      [companyId]
+      [routeKey]
     );
 
-    return result.rows;
+    return result.rows[0] || null;
   }
 
-  async updateUserLastLogin(userId) {
-    await this.pool.query(`UPDATE users SET last_login = NOW() WHERE id = $1`, [
-      userId,
-    ]);
+  async setRouteCache(routeKey, routeData, distanceMatrix = null) {
+    await this.pool.query(
+      `
+      INSERT INTO route_cache (route_key, route_data, distance_matrix)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (route_key) 
+      DO UPDATE SET 
+        route_data = $2,
+        distance_matrix = $3,
+        created_at = NOW(),
+        expires_at = NOW() + INTERVAL '24 hours'
+      `,
+      [routeKey, JSON.stringify(routeData), JSON.stringify(distanceMatrix)]
+    );
+  }
+
+  async clearExpiredRouteCache() {
+    const result = await this.pool.query(
+      `DELETE FROM route_cache WHERE expires_at <= NOW()`
+    );
+    return result.rowCount;
   }
 
   // ============================================================================
   // UTILITY METHODS
   // ============================================================================
 
-  async getTableCounts() {
-    const result = await this.pool.query(`
-      SELECT 
-        (SELECT COUNT(*) FROM customers WHERE is_active = TRUE) as customers,
-        (SELECT COUNT(*) FROM customer_locations WHERE is_active = TRUE) as locations,
-        (SELECT COUNT(*) FROM customer_locations WHERE geom IS NOT NULL AND is_active = TRUE) as geocoded_locations,
-        (SELECT COUNT(*) FROM customer_equipment) as equipment,
-        (SELECT COUNT(*) FROM users WHERE is_active = TRUE) as users
-    `);
-
-    return result.rows[0];
+  async testConnection() {
+    try {
+      const result = await this.pool.query("SELECT NOW() as current_time");
+      return result.rows[0];
+    } catch (error) {
+      throw new Error(`Database connection test failed: ${error.message}`);
+    }
   }
 
-  async healthCheck() {
-    try {
-      const client = await this.pool.connect();
-
-      // Test basic query
-      await client.query("SELECT NOW()");
-
-      // Test PostGIS
-      const postgisResult = await client.query("SELECT PostGIS_Version()");
-
-      // Get table counts
-      const counts = await this.getTableCounts();
-
-      client.release();
-
-      return {
-        status: "healthy",
-        postgis: postgisResult.rows[0].postgis_version,
-        tables: counts,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      return {
-        status: "unhealthy",
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      };
+  async close() {
+    if (this.pool) {
+      await this.pool.end();
+      console.log("📴 Database connection closed");
     }
   }
 }
 
-export default new DatabaseService();
+// Create and export singleton instance
+const databaseService = new DatabaseService();
+export default databaseService;

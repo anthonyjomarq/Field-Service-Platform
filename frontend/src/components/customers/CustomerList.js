@@ -39,7 +39,9 @@ const CustomerList = () => {
       if (searchTerm) filters.search = searchTerm;
       if (filterType) filters.customerType = filterType;
 
+      console.log("🔄 Loading customers with filters:", filters);
       const response = await customerAPI.getCustomers(filters);
+      console.log("✅ Customers loaded:", response.customers.length);
       setCustomers(response.customers);
     } catch (err) {
       setError("Failed to load customers: " + err.message);
@@ -57,8 +59,10 @@ const CustomerList = () => {
 
   const handleEditCustomer = async (customer) => {
     try {
+      console.log("✏️ Editing customer:", customer.id);
       // Get full customer details including locations
       const fullCustomer = await customerAPI.getCustomer(customer.id);
+      console.log("📄 Full customer data:", fullCustomer);
       setEditingCustomer(fullCustomer);
       setFormMode("edit");
       setShowFormModal(true);
@@ -67,23 +71,42 @@ const CustomerList = () => {
     }
   };
 
-  const handleCustomerSaved = (savedCustomer) => {
-    if (formMode === "create") {
-      setCustomers((prev) => [savedCustomer, ...prev]);
-    } else {
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.id === savedCustomer.id ? { ...c, ...savedCustomer } : c
-        )
-      );
+  // **FIX 2: Enhanced handleCustomerSaved to reload customer list and ensure fresh data**
+  const handleCustomerSaved = async (savedCustomer) => {
+    console.log("💾 Customer saved:", savedCustomer);
+
+    try {
+      // **CRITICAL: Reload the entire customer list to get fresh data with updated counts**
+      console.log("🔄 Reloading customer list after save...");
+      await loadCustomers();
+
+      // Optional: Also update the specific customer in state if we want immediate feedback
+      if (formMode === "create") {
+        console.log("✅ New customer created, list reloaded");
+      } else {
+        console.log("✅ Customer updated, list reloaded with fresh counts");
+      }
+    } catch (err) {
+      console.error("❌ Error reloading customers after save:", err);
+      // Fallback: Still update the local state if reload fails
+      if (formMode === "create") {
+        setCustomers((prev) => [savedCustomer, ...prev]);
+      } else {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === savedCustomer.id ? { ...c, ...savedCustomer } : c
+          )
+        );
+      }
     }
-    setShowFormModal(false);
-    setEditingCustomer(null);
   };
 
-  const handleViewDetails = async (customer) => {
+  const handleViewCustomer = async (customer) => {
     try {
+      console.log("👁️ Viewing customer:", customer.id);
+      // Get full customer details for the details modal
       const fullCustomer = await customerAPI.getCustomer(customer.id);
+      console.log("📄 Customer details:", fullCustomer);
       setSelectedCustomer(fullCustomer);
       setShowDetailsModal(true);
     } catch (err) {
@@ -98,90 +121,80 @@ const CustomerList = () => {
 
   const handleDeleteConfirm = async () => {
     try {
+      console.log("🗑️ Deleting customer:", deletingCustomer.id);
       await customerAPI.deleteCustomer(deletingCustomer.id);
-      setCustomers((prev) => prev.filter((c) => c.id !== deletingCustomer.id));
+
+      // **Reload customer list after deletion**
+      await loadCustomers();
+
       setShowDeleteModal(false);
       setDeletingCustomer(null);
+
+      console.log("✅ Customer deleted and list reloaded");
     } catch (err) {
       setError("Failed to delete customer: " + err.message);
     }
   };
 
-  const clearFilters = () => {
-    setSearchTerm("");
-    setFilterType("");
-  };
-
-  if (loading && customers.length === 0) {
-    return (
-      <div className="container">
-        <h2>Loading customers...</h2>
-      </div>
-    );
-  }
+  const clearError = () => setError("");
 
   return (
     <div className="customer-list-container">
+      {/* Header */}
       <div className="header">
         <div className="header-content">
-          <h2>Customer Management</h2>
-          <button className="primary-btn" onClick={handleCreateCustomer}>
-            + Add New Customer
+          <h2>Customers Management ({customers.length})</h2>
+          <button onClick={handleCreateCustomer} className="primary-btn">
+            Add Customer
           </button>
         </div>
       </div>
 
+      {/* Error Message */}
       {error && (
         <div className="error-message">
           {error}
-          <button onClick={() => setError("")} className="close-error">
+          <button onClick={clearError} className="close-error">
             ×
           </button>
         </div>
       )}
 
-      {/* Search and Filter Bar */}
-      <div className="filters-section">
+      {/* Filters */}
+      <div className="filters">
         <div className="filters-content">
-          <input
-            type="text"
-            placeholder="Search customers..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
+          <div className="search-group">
+            <input
+              type="text"
+              placeholder="Search customers..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
 
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">All Types</option>
-            <option value="commercial">Commercial</option>
-            <option value="residential">Residential</option>
-          </select>
-
-          {(searchTerm || filterType) && (
-            <button onClick={clearFilters} className="clear-filters-btn">
-              Clear Filters
-            </button>
-          )}
+          <div className="filter-group">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="filter-select"
+            >
+              <option value="">All Types</option>
+              <option value="commercial">Commercial</option>
+              <option value="residential">Residential</option>
+            </select>
+          </div>
         </div>
-
-        <div className="results-info">Found {customers.length} customers</div>
       </div>
 
-      {/* Customer Grid */}
-      {customers.length === 0 ? (
-        <div className="empty-state">
-          <h3>No customers found</h3>
-          <p>
-            {searchTerm || filterType
-              ? "Try adjusting your search criteria or "
-              : "Get started by adding your first customer."}
-          </p>
+      {/* Customer List */}
+      {loading ? (
+        <div className="loading">Loading customers...</div>
+      ) : customers.length === 0 ? (
+        <div className="no-customers">
+          <p>No customers found.</p>
           <button onClick={handleCreateCustomer} className="primary-btn">
-            Add New Customer
+            Add Your First Customer
           </button>
         </div>
       ) : (
@@ -189,57 +202,85 @@ const CustomerList = () => {
           {customers.map((customer) => (
             <div key={customer.id} className="customer-card">
               <div className="customer-header">
-                <h3 className="customer-name">{customer.name}</h3>
-                <span className={`customer-type ${customer.customer_type}`}>
-                  {customer.customer_type}
-                </span>
+                <h3>{customer.name}</h3>
+                <span className="customer-type">{customer.customer_type}</span>
               </div>
 
               <div className="customer-info">
-                <div className="info-row">
-                  <strong>Email:</strong>
-                  <span>{customer.email || "Not provided"}</span>
-                </div>
-                <div className="info-row">
-                  <strong>Phone:</strong>
-                  <span>{customer.phone || "Not provided"}</span>
-                </div>
-                <div className="info-row">
-                  <strong>Business:</strong>
-                  <span>{customer.business_type || "Not specified"}</span>
-                </div>
-              </div>
+                {/* **FIX: Display multiple emails and phones properly** */}
+                {customer.emails && customer.emails.length > 0 ? (
+                  <div className="contact-info">
+                    <strong>Email:</strong> {customer.emails[0]}
+                    {customer.emails.length > 1 && (
+                      <span className="contact-count">
+                        {" "}
+                        + {customer.emails.length - 1} more
+                      </span>
+                    )}
+                  </div>
+                ) : customer.email ? (
+                  <div className="contact-info">
+                    <strong>Email:</strong> {customer.email}
+                  </div>
+                ) : (
+                  <div className="contact-info">
+                    <strong>Email:</strong> Not provided
+                  </div>
+                )}
 
-              <div className="customer-stats">
-                <div className="stat">
-                  <span className="stat-number">{customer.location_count}</span>
-                  <span className="stat-label">Locations</span>
-                </div>
-                <div className="stat">
-                  <span className="stat-number">
-                    {customer.equipment_count}
+                {customer.phones && customer.phones.length > 0 ? (
+                  <div className="contact-info">
+                    <strong>Phone:</strong> {customer.phones[0]}
+                    {customer.phones.length > 1 && (
+                      <span className="contact-count">
+                        {" "}
+                        + {customer.phones.length - 1} more
+                      </span>
+                    )}
+                  </div>
+                ) : customer.phone ? (
+                  <div className="contact-info">
+                    <strong>Phone:</strong> {customer.phone}
+                  </div>
+                ) : (
+                  <div className="contact-info">
+                    <strong>Phone:</strong> Not provided
+                  </div>
+                )}
+
+                {customer.business_type && (
+                  <div className="contact-info">
+                    <strong>Business:</strong> {customer.business_type}
+                  </div>
+                )}
+
+                {/* **FIX: Properly display location and equipment counts** */}
+                <div className="counts-info">
+                  <span className="count-item">
+                    📍 {customer.location_count || 0} Location
+                    {(customer.location_count || 0) !== 1 ? "s" : ""}
                   </span>
-                  <span className="stat-label">Equipment</span>
+                  <span className="count-item">
+                    🔧 {customer.equipment_count || 0} Equipment
+                  </span>
                 </div>
-              </div>
 
-              <div className="customer-meta">
-                <div className="created-info">
-                  Created by {customer.created_by_name}{" "}
-                  {customer.created_by_lastname}
-                </div>
-                <div className="created-date">
-                  {new Date(customer.created_at).toLocaleDateString()}
+                <div className="meta-info">
+                  <div className="created-info">
+                    Created by {customer.created_by_name}{" "}
+                    {customer.created_by_lastname} on{" "}
+                    {new Date(customer.created_at).toLocaleDateString()}
+                  </div>
                 </div>
               </div>
 
               <div className="customer-actions">
                 <button
-                  onClick={() => handleViewDetails(customer)}
+                  onClick={() => handleViewCustomer(customer)}
                   className="action-btn view-btn"
                   title="View Details"
                 >
-                  View Details
+                  View
                 </button>
                 <button
                   onClick={() => handleEditCustomer(customer)}
@@ -263,8 +304,9 @@ const CustomerList = () => {
         </div>
       )}
 
-      {/* Customer Form Modal */}
+      {/* **FIX 3: Add unique key to force re-render when switching between customers** */}
       <CustomerFormModal
+        key={editingCustomer ? `edit-${editingCustomer.id}` : "create"}
         isOpen={showFormModal}
         onClose={() => {
           setShowFormModal(false);
@@ -275,7 +317,7 @@ const CustomerList = () => {
         mode={formMode}
       />
 
-      {/* Customer Details Modal - UPDATED FOR MULTIPLE CONTACTS */}
+      {/* Customer Details Modal */}
       {showDetailsModal && selectedCustomer && (
         <CustomerDetailsModal
           customer={selectedCustomer}
@@ -373,72 +415,49 @@ const CustomerList = () => {
           height: 20px;
         }
 
-        .filters-section {
+        .filters {
           background: white;
           border-radius: 8px;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          padding: 20px;
           margin-bottom: 20px;
+          padding: 20px;
         }
 
         .filters-content {
           display: flex;
           gap: 15px;
           align-items: center;
-          margin-bottom: 10px;
+        }
+
+        .search-input,
+        .filter-select {
+          padding: 10px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 14px;
         }
 
         .search-input {
           flex: 1;
-          padding: 10px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 14px;
+          max-width: 300px;
         }
 
         .filter-select {
-          padding: 10px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 14px;
           min-width: 150px;
         }
 
-        .clear-filters-btn {
-          padding: 10px 15px;
-          background: #6c757d;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 14px;
-        }
-
-        .clear-filters-btn:hover {
-          background: #5a6268;
-        }
-
-        .results-info {
-          color: #666;
-          font-size: 14px;
-        }
-
-        .empty-state {
+        .loading {
           text-align: center;
-          padding: 60px 20px;
+          padding: 40px;
+          color: #666;
+        }
+
+        .no-customers {
+          text-align: center;
+          padding: 40px;
           background: white;
           border-radius: 8px;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .empty-state h3 {
-          color: #333;
-          margin-bottom: 10px;
-        }
-
-        .empty-state p {
-          color: #666;
-          margin-bottom: 20px;
         }
 
         .customers-grid {
@@ -450,7 +469,7 @@ const CustomerList = () => {
         .customer-card {
           background: white;
           border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
           padding: 20px;
           transition: transform 0.2s, box-shadow 0.2s;
         }
@@ -463,85 +482,57 @@ const CustomerList = () => {
         .customer-header {
           display: flex;
           justify-content: space-between;
-          align-items: flex-start;
+          align-items: start;
           margin-bottom: 15px;
         }
 
-        .customer-name {
+        .customer-header h3 {
           margin: 0;
           color: #333;
           font-size: 18px;
-          flex: 1;
         }
 
         .customer-type {
+          background: #e9ecef;
+          color: #495057;
           padding: 4px 8px;
-          border-radius: 12px;
+          border-radius: 4px;
           font-size: 12px;
           font-weight: 500;
-          text-transform: uppercase;
-        }
-
-        .customer-type.commercial {
-          background: #e3f2fd;
-          color: #1976d2;
-        }
-
-        .customer-type.residential {
-          background: #f3e5f5;
-          color: #7b1fa2;
+          text-transform: capitalize;
         }
 
         .customer-info {
           margin-bottom: 15px;
         }
 
-        .info-row {
-          display: flex;
-          justify-content: space-between;
+        .contact-info {
           margin-bottom: 8px;
           font-size: 14px;
+          color: #555;
         }
 
-        .info-row strong {
-          color: #333;
-        }
-
-        .info-row span {
-          color: #666;
-          text-align: right;
-        }
-
-        .customer-stats {
-          display: flex;
-          justify-content: space-around;
-          margin-bottom: 15px;
-          padding: 15px;
-          background: #f8f9fa;
-          border-radius: 6px;
-        }
-
-        .stat {
-          text-align: center;
-        }
-
-        .stat-number {
-          display: block;
-          font-size: 24px;
-          font-weight: bold;
+        .contact-count {
           color: #007bff;
-        }
-
-        .stat-label {
           font-size: 12px;
-          color: #666;
-          text-transform: uppercase;
+          font-style: italic;
         }
 
-        .customer-meta {
-          margin-bottom: 15px;
-          padding-top: 10px;
+        .counts-info {
+          display: flex;
+          gap: 15px;
+          margin: 12px 0;
+          padding: 8px 0;
           border-top: 1px solid #eee;
+        }
+
+        .count-item {
+          font-size: 14px;
+          color: #666;
+          font-weight: 500;
+        }
+
+        .meta-info {
           font-size: 12px;
           color: #666;
         }
@@ -609,7 +600,7 @@ const CustomerList = () => {
   );
 };
 
-// Customer Details Modal Component - UPDATED TO SHOW MULTIPLE EMAILS AND PHONES
+// Customer Details Modal Component
 const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
   return (
     <div className="modal-overlay">
@@ -625,7 +616,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
           <div className="details-section">
             <h3>Contact Information</h3>
 
-            {/* Display multiple emails if available */}
+            {/* **Display multiple emails if available** */}
             {customer.emails && customer.emails.length > 0 ? (
               customer.emails.map((email, index) => (
                 <div key={index} className="detail-row">
@@ -642,7 +633,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
               </div>
             )}
 
-            {/* Display multiple phones if available */}
+            {/* **Display multiple phones if available** */}
             {customer.phones && customer.phones.length > 0 ? (
               customer.phones.map((phone, index) => (
                 <div key={index} className="detail-row">
@@ -660,61 +651,85 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             )}
 
             <div className="detail-row">
-              <strong>Type:</strong> {customer.customer_type}
+              <strong>Type:</strong> {customer.customer_type || "Not specified"}
             </div>
-            <div className="detail-row">
-              <strong>Business:</strong>{" "}
-              {customer.business_type || "Not specified"}
-            </div>
+
+            {customer.business_type && (
+              <div className="detail-row">
+                <strong>Business Type:</strong> {customer.business_type}
+              </div>
+            )}
           </div>
 
-          {customer.locations && customer.locations.length > 0 && (
-            <div className="details-section">
-              <h3>Locations ({customer.locations.length})</h3>
-              {customer.locations.map((location, index) => (
-                <div key={index} className="location-detail">
+          {/* **FIX: Display location count in details view** */}
+          <div className="details-section">
+            <h3>Locations ({customer.location_count || 0})</h3>
+            {customer.locations && customer.locations.length > 0 ? (
+              customer.locations.map((location, index) => (
+                <div key={location.id} className="location-item">
                   <div className="location-header">
-                    <strong>
-                      {location.street_address || location.address}
-                    </strong>
-                    <span className="location-type">
-                      ({location.address_type})
-                    </span>
+                    <strong>Location {index + 1}</strong>
+                    {location.is_primary && (
+                      <span className="primary-badge">Primary</span>
+                    )}
                   </div>
-                  <div>
-                    {location.city}, {location.state}{" "}
-                    {location.postal_code || location.zip_code}
+                  <div className="location-details">
+                    {location.street_address && (
+                      <div>{location.street_address}</div>
+                    )}
+                    {(location.city ||
+                      location.state ||
+                      location.postal_code) && (
+                      <div>
+                        {location.city && location.city}
+                        {location.city && location.state && ", "}
+                        {location.state && location.state}
+                        {location.postal_code && ` ${location.postal_code}`}
+                      </div>
+                    )}
                   </div>
-                  {location.contact_person && (
-                    <div className="location-contact">
-                      Contact: {location.contact_person}
-                    </div>
-                  )}
-                  {location.service_hours && (
-                    <div className="location-hours">
-                      Hours: {location.service_hours}
-                    </div>
-                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            ) : (
+              <div className="no-items">No locations added</div>
+            )}
+          </div>
 
-          {customer.equipment && customer.equipment.length > 0 && (
-            <div className="details-section">
-              <h3>Equipment ({customer.equipment.length})</h3>
-              {customer.equipment.map((item, index) => (
-                <div key={index} className="equipment-detail">
-                  <strong>{item.equipment_type}</strong> - {item.brand}{" "}
-                  {item.model}
-                  {item.serial_number && (
-                    <div>Serial: {item.serial_number}</div>
+          <div className="details-section">
+            <h3>Equipment ({customer.equipment_count || 0})</h3>
+            {customer.equipment && customer.equipment.length > 0 ? (
+              customer.equipment.map((equipment, index) => (
+                <div key={equipment.id} className="equipment-item">
+                  <div>
+                    <strong>{equipment.equipment_type}</strong>
+                  </div>
+                  {equipment.brand && <div>Brand: {equipment.brand}</div>}
+                  {equipment.model && <div>Model: {equipment.model}</div>}
+                  {equipment.serial_number && (
+                    <div>Serial: {equipment.serial_number}</div>
                   )}
-                  <div className="equipment-status">Status: {item.status}</div>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="no-items">No equipment registered</div>
+            )}
+          </div>
+
+          <div className="details-section">
+            <h3>Metadata</h3>
+            <div className="detail-row">
+              <strong>Created:</strong>{" "}
+              {new Date(customer.created_at).toLocaleString()}
             </div>
-          )}
+            <div className="detail-row">
+              <strong>Created by:</strong> {customer.created_by_name}{" "}
+              {customer.created_by_lastname}
+            </div>
+            <div className="detail-row">
+              <strong>Last updated:</strong>{" "}
+              {new Date(customer.updated_at).toLocaleString()}
+            </div>
+          </div>
         </div>
 
         <div className="modal-actions">
@@ -726,7 +741,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
               Delete Customer
             </button>
           )}
-          <button onClick={onClose} className="cancel-btn">
+          <button onClick={onClose} className="close-btn">
             Close
           </button>
         </div>
@@ -792,8 +807,6 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
 
           .details-content {
             padding: 20px;
-            max-height: 60vh;
-            overflow-y: auto;
           }
 
           .details-section {
@@ -802,28 +815,25 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
 
           .details-section h3 {
             margin: 0 0 15px 0;
-            color: #333;
+            color: #495057;
+            font-size: 16px;
             border-bottom: 1px solid #eee;
             padding-bottom: 8px;
           }
 
           .detail-row {
-            display: flex;
-            justify-content: space-between;
             margin-bottom: 8px;
-            padding: 8px 0;
+            font-size: 14px;
+            color: #555;
           }
 
-          .detail-row strong {
-            color: #333;
-          }
-
-          .location-detail,
-          .equipment-detail {
+          .location-item,
+          .equipment-item {
             background: #f8f9fa;
-            padding: 15px;
+            padding: 12px;
             border-radius: 6px;
             margin-bottom: 10px;
+            border: 1px solid #e9ecef;
           }
 
           .location-header {
@@ -833,34 +843,23 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             margin-bottom: 8px;
           }
 
-          .location-type {
+          .primary-badge {
             background: #007bff;
             color: white;
             padding: 2px 6px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 500;
-            text-transform: capitalize;
           }
 
-          .location-contact,
-          .location-hours {
+          .location-details {
             font-size: 14px;
             color: #666;
-            margin-top: 5px;
           }
 
-          .equipment-detail {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-          }
-
-          .equipment-status {
-            font-size: 14px;
+          .no-items {
             color: #666;
-            margin-top: 5px;
+            font-style: italic;
           }
 
           .modal-actions {
@@ -870,15 +869,6 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             padding: 20px;
             border-top: 1px solid #eee;
             background: #f8f9fa;
-          }
-
-          .modal-actions button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s ease;
           }
 
           .edit-btn {
@@ -913,7 +903,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             border-color: #c82333;
           }
 
-          .cancel-btn {
+          .close-btn {
             padding: 10px 20px;
             background: #f8f9fa;
             color: #495057;
@@ -924,7 +914,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             transition: all 0.2s ease;
           }
 
-          .cancel-btn:hover {
+          .close-btn:hover {
             background: #e9ecef;
             border-color: #adb5bd;
           }
@@ -940,10 +930,13 @@ const DeleteConfirmationModal = ({ customer, onConfirm, onCancel }) => {
     <div className="modal-overlay">
       <div className="modal-content">
         <div className="modal-header">
-          <h2>Confirm Deletion</h2>
+          <h2>Delete Customer</h2>
+          <button onClick={onCancel} className="close-button">
+            ×
+          </button>
         </div>
 
-        <div className="modal-body">
+        <div className="confirmation-content">
           <p>
             Are you sure you want to delete <strong>{customer.name}</strong>?
           </p>
@@ -963,6 +956,10 @@ const DeleteConfirmationModal = ({ customer, onConfirm, onCancel }) => {
         </div>
 
         <style jsx>{`
+          .confirmation-content {
+            padding: 20px;
+          }
+
           .modal-actions {
             display: flex;
             justify-content: flex-end;
