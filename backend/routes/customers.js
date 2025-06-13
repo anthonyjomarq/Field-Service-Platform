@@ -57,8 +57,16 @@ router.get("/:id", authenticate, async (req, res) => {
 // POST /api/customers - Create new customer
 router.post("/", authenticate, async (req, res) => {
   try {
-    const { name, email, phone, customerType, businessType, locations } =
-      req.body;
+    const {
+      name,
+      email,
+      phone,
+      emails,
+      phones,
+      customerType,
+      businessType,
+      locations,
+    } = req.body;
 
     // Basic validation
     if (!name || name.trim() === "") {
@@ -67,23 +75,44 @@ router.post("/", authenticate, async (req, res) => {
       });
     }
 
-    // Enhanced validation
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({
-        error: "Please provide a valid email address",
-      });
+    // Handle multiple emails - validate all of them
+    const emailList =
+      emails && Array.isArray(emails)
+        ? emails.filter((e) => e.trim())
+        : email
+        ? [email]
+        : [];
+
+    for (const emailAddr of emailList) {
+      if (emailAddr && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddr)) {
+        return res.status(400).json({
+          error: `Please provide a valid email address: ${emailAddr}`,
+        });
+      }
     }
 
-    if (phone && !/^[\d\s\-\(\)\+]+$/.test(phone)) {
-      return res.status(400).json({
-        error: "Please provide a valid phone number",
-      });
+    // Handle multiple phones - validate all of them
+    const phoneList =
+      phones && Array.isArray(phones)
+        ? phones.filter((p) => p.trim())
+        : phone
+        ? [phone]
+        : [];
+
+    for (const phoneNum of phoneList) {
+      if (phoneNum && !/^[\d\s\-\(\)\+]+$/.test(phoneNum)) {
+        return res.status(400).json({
+          error: `Please provide a valid phone number: ${phoneNum}`,
+        });
+      }
     }
 
     const customerData = {
       name: name.trim(),
-      email: email?.trim() || null,
-      phone: phone?.trim() || null,
+      email: emailList[0] || null, // Use first email for backward compatibility
+      phone: phoneList[0] || null, // Use first phone for backward compatibility
+      emails: emailList, // Store all emails
+      phones: phoneList, // Store all phones
       customerType: customerType || "commercial",
       businessType: businessType?.trim() || null,
       locations: locations || [],
@@ -118,7 +147,8 @@ router.post("/", authenticate, async (req, res) => {
 // PUT /api/customers/:id - Update customer
 router.put("/:id", authenticate, async (req, res) => {
   try {
-    const { name, email, phone, customerType, businessType } = req.body;
+    const { name, email, phone, emails, phones, customerType, businessType } =
+      req.body;
 
     // Basic validation
     if (!name || name.trim() === "") {
@@ -127,23 +157,44 @@ router.put("/:id", authenticate, async (req, res) => {
       });
     }
 
-    // Enhanced validation
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({
-        error: "Please provide a valid email address",
-      });
+    // Handle multiple emails - validate all of them
+    const emailList =
+      emails && Array.isArray(emails)
+        ? emails.filter((e) => e.trim())
+        : email
+        ? [email]
+        : [];
+
+    for (const emailAddr of emailList) {
+      if (emailAddr && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddr)) {
+        return res.status(400).json({
+          error: `Please provide a valid email address: ${emailAddr}`,
+        });
+      }
     }
 
-    if (phone && !/^[\d\s\-\(\)\+]+$/.test(phone)) {
-      return res.status(400).json({
-        error: "Please provide a valid phone number",
-      });
+    // Handle multiple phones - validate all of them
+    const phoneList =
+      phones && Array.isArray(phones)
+        ? phones.filter((p) => p.trim())
+        : phone
+        ? [phone]
+        : [];
+
+    for (const phoneNum of phoneList) {
+      if (phoneNum && !/^[\d\s\-\(\)\+]+$/.test(phoneNum)) {
+        return res.status(400).json({
+          error: `Please provide a valid phone number: ${phoneNum}`,
+        });
+      }
     }
 
     const customerData = {
       name: name.trim(),
-      email: email?.trim() || null,
-      phone: phone?.trim() || null,
+      email: emailList[0] || null, // Use first email for backward compatibility
+      phone: phoneList[0] || null, // Use first phone for backward compatibility
+      emails: emailList, // Store all emails
+      phones: phoneList, // Store all phones
       customerType: customerType || "commercial",
       businessType: businessType?.trim() || null,
     };
@@ -258,37 +309,66 @@ router.post("/:id/locations", authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/customers/:customerId/locations/:locationId - Update location
-router.put(
-  "/:customerId/locations/:locationId",
-  authenticate,
-  async (req, res) => {
-    try {
-      const { customerId, locationId } = req.params;
-      const locationData = req.body;
+// PUT /api/customers/:id/locations/:locationId - Update location
+router.put("/:id/locations/:locationId", authenticate, async (req, res) => {
+  try {
+    const { locationId } = req.params;
+    const locationData = req.body;
 
-      // Basic validation
-      if (!locationData.streetAddress || !locationData.city) {
-        return res.status(400).json({
-          error: "Street address and city are required",
-        });
-      }
-
-      // TODO: Implement updateCustomerLocation method in databaseService
-      // For now, return a placeholder response
-      res.json({
-        message: "Location update functionality coming in Phase 3",
-        locationId,
-        customerId,
-      });
-    } catch (error) {
-      console.error("Error updating location:", error);
-      res.status(400).json({
-        error: "Failed to update location",
-        details: error.message,
+    // Basic validation
+    if (!locationData.streetAddress || !locationData.city) {
+      return res.status(400).json({
+        error: "Street address and city are required",
       });
     }
+
+    const updatedLocation = await databaseService.updateCustomerLocation(
+      locationId,
+      locationData
+    );
+
+    if (!updatedLocation) {
+      return res.status(404).json({
+        error: "Location not found",
+      });
+    }
+
+    res.json({
+      message: "Location updated successfully",
+      location: updatedLocation,
+    });
+  } catch (error) {
+    console.error("Error updating location:", error);
+    res.status(400).json({
+      error: "Failed to update location",
+      details: error.message,
+    });
   }
-);
+});
+
+// DELETE /api/customers/:id/locations/:locationId - Delete location
+router.delete("/:id/locations/:locationId", authenticate, async (req, res) => {
+  try {
+    const { locationId } = req.params;
+
+    const deleted = await databaseService.deleteCustomerLocation(locationId);
+
+    if (!deleted) {
+      return res.status(404).json({
+        error: "Location not found",
+      });
+    }
+
+    res.json({
+      message: "Location deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting location:", error);
+    res.status(500).json({
+      error: "Failed to delete location",
+      details: error.message,
+    });
+  }
+});
 
 export default router;

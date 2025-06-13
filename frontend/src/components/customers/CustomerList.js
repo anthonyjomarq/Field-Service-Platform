@@ -275,7 +275,7 @@ const CustomerList = () => {
         mode={formMode}
       />
 
-      {/* Customer Details Modal */}
+      {/* Customer Details Modal - UPDATED FOR MULTIPLE CONTACTS */}
       {showDetailsModal && selectedCustomer && (
         <CustomerDetailsModal
           customer={selectedCustomer}
@@ -505,7 +505,6 @@ const CustomerList = () => {
 
         .info-row strong {
           color: #333;
-          min-width: 80px;
         }
 
         .info-row span {
@@ -515,7 +514,7 @@ const CustomerList = () => {
 
         .customer-stats {
           display: flex;
-          gap: 20px;
+          justify-content: space-around;
           margin-bottom: 15px;
           padding: 15px;
           background: #f8f9fa;
@@ -524,7 +523,6 @@ const CustomerList = () => {
 
         .stat {
           text-align: center;
-          flex: 1;
         }
 
         .stat-number {
@@ -535,7 +533,6 @@ const CustomerList = () => {
         }
 
         .stat-label {
-          display: block;
           font-size: 12px;
           color: #666;
           text-transform: uppercase;
@@ -543,23 +540,20 @@ const CustomerList = () => {
 
         .customer-meta {
           margin-bottom: 15px;
-          padding-top: 15px;
+          padding-top: 10px;
           border-top: 1px solid #eee;
-        }
-
-        .created-info {
           font-size: 12px;
           color: #666;
         }
 
-        .created-date {
-          font-size: 12px;
-          color: #999;
+        .created-info {
+          margin-bottom: 4px;
         }
 
         .customer-actions {
           display: flex;
           gap: 8px;
+          justify-content: flex-end;
         }
 
         .action-btn {
@@ -609,19 +603,13 @@ const CustomerList = () => {
             flex-direction: column;
             align-items: stretch;
           }
-
-          .header-content {
-            flex-direction: column;
-            gap: 15px;
-            align-items: stretch;
-          }
         }
       `}</style>
     </div>
   );
 };
 
-// Customer Details Modal Component
+// Customer Details Modal Component - UPDATED TO SHOW MULTIPLE EMAILS AND PHONES
 const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
   return (
     <div className="modal-overlay">
@@ -636,12 +624,41 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
         <div className="details-content">
           <div className="details-section">
             <h3>Contact Information</h3>
-            <div className="detail-row">
-              <strong>Email:</strong> {customer.email || "Not provided"}
-            </div>
-            <div className="detail-row">
-              <strong>Phone:</strong> {customer.phone || "Not provided"}
-            </div>
+
+            {/* Display multiple emails if available */}
+            {customer.emails && customer.emails.length > 0 ? (
+              customer.emails.map((email, index) => (
+                <div key={index} className="detail-row">
+                  <strong>Email {index + 1}:</strong> {email}
+                </div>
+              ))
+            ) : customer.email ? (
+              <div className="detail-row">
+                <strong>Email:</strong> {customer.email}
+              </div>
+            ) : (
+              <div className="detail-row">
+                <strong>Email:</strong> Not provided
+              </div>
+            )}
+
+            {/* Display multiple phones if available */}
+            {customer.phones && customer.phones.length > 0 ? (
+              customer.phones.map((phone, index) => (
+                <div key={index} className="detail-row">
+                  <strong>Phone {index + 1}:</strong> {phone}
+                </div>
+              ))
+            ) : customer.phone ? (
+              <div className="detail-row">
+                <strong>Phone:</strong> {customer.phone}
+              </div>
+            ) : (
+              <div className="detail-row">
+                <strong>Phone:</strong> Not provided
+              </div>
+            )}
+
             <div className="detail-row">
               <strong>Type:</strong> {customer.customer_type}
             </div>
@@ -709,12 +726,70 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
               Delete Customer
             </button>
           )}
-          <button onClick={onClose} className="close-btn">
+          <button onClick={onClose} className="cancel-btn">
             Close
           </button>
         </div>
 
         <style jsx>{`
+          .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+          }
+
+          .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          }
+
+          .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+          }
+
+          .modal-header h2 {
+            margin: 0;
+            color: #333;
+          }
+
+          .close-button {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #6c757d;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+          }
+
+          .close-button:hover {
+            background: #e9ecef;
+            color: #495057;
+            border-color: #adb5bd;
+          }
+
           .details-content {
             padding: 20px;
             max-height: 60vh;
@@ -761,22 +836,31 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
           .location-type {
             background: #007bff;
             color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
             font-size: 12px;
+            font-weight: 500;
+            text-transform: capitalize;
           }
 
           .location-contact,
           .location-hours {
             font-size: 14px;
             color: #666;
-            margin-top: 4px;
+            margin-top: 5px;
+          }
+
+          .equipment-detail {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
           }
 
           .equipment-status {
             font-size: 14px;
             color: #666;
-            margin-top: 4px;
+            margin-top: 5px;
           }
 
           .modal-actions {
@@ -786,6 +870,15 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             padding: 20px;
             border-top: 1px solid #eee;
             background: #f8f9fa;
+          }
+
+          .modal-actions button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
           }
 
           .edit-btn {
@@ -820,7 +913,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             border-color: #c82333;
           }
 
-          .close-btn {
+          .cancel-btn {
             padding: 10px 20px;
             background: #f8f9fa;
             color: #495057;
@@ -831,7 +924,7 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
             transition: all 0.2s ease;
           }
 
-          .close-btn:hover {
+          .cancel-btn:hover {
             background: #e9ecef;
             border-color: #adb5bd;
           }
@@ -841,16 +934,16 @@ const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
   );
 };
 
-// Delete Confirmation Modal
+// Delete Confirmation Modal Component
 const DeleteConfirmationModal = ({ customer, onConfirm, onCancel }) => {
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: "400px" }}>
+      <div className="modal-content">
         <div className="modal-header">
-          <h3>Confirm Deletion</h3>
+          <h2>Confirm Deletion</h2>
         </div>
 
-        <div style={{ padding: "20px" }}>
+        <div className="modal-body">
           <p>
             Are you sure you want to delete <strong>{customer.name}</strong>?
           </p>

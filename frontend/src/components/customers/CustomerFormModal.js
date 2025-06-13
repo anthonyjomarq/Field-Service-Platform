@@ -10,8 +10,8 @@ const CustomerFormModal = ({
 }) => {
   const [formData, setFormData] = useState({
     name: "",
-    email: "",
-    phone: "",
+    emails: [""], // Changed to array for multiple emails
+    phones: [""], // Changed to array for multiple phones
     customerType: "commercial",
     businessType: "",
     primaryLocation: {
@@ -34,8 +34,8 @@ const CustomerFormModal = ({
 
       setFormData({
         name: customer.name || "",
-        email: customer.email || "",
-        phone: customer.phone || "",
+        emails: customer.email ? [customer.email] : [""], // Convert single email to array
+        phones: customer.phone ? [customer.phone] : [""], // Convert single phone to array
         customerType: customer.customer_type || "commercial",
         businessType: customer.business_type || "",
         primaryLocation: {
@@ -55,8 +55,8 @@ const CustomerFormModal = ({
       // Reset for create mode
       setFormData({
         name: "",
-        email: "",
-        phone: "",
+        emails: [""],
+        phones: [""],
         customerType: "commercial",
         businessType: "",
         primaryLocation: {
@@ -78,6 +78,54 @@ const CustomerFormModal = ({
     }));
   };
 
+  // Handle email changes
+  const handleEmailChange = (index, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      emails: prev.emails.map((email, i) => (i === index ? value : email)),
+    }));
+  };
+
+  const addEmail = () => {
+    setFormData((prev) => ({
+      ...prev,
+      emails: [...prev.emails, ""],
+    }));
+  };
+
+  const removeEmail = (index) => {
+    if (formData.emails.length > 1) {
+      setFormData((prev) => ({
+        ...prev,
+        emails: prev.emails.filter((_, i) => i !== index),
+      }));
+    }
+  };
+
+  // Handle phone changes
+  const handlePhoneChange = (index, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      phones: prev.phones.map((phone, i) => (i === index ? value : phone)),
+    }));
+  };
+
+  const addPhone = () => {
+    setFormData((prev) => ({
+      ...prev,
+      phones: [...prev.phones, ""],
+    }));
+  };
+
+  const removePhone = (index) => {
+    if (formData.phones.length > 1) {
+      setFormData((prev) => ({
+        ...prev,
+        phones: prev.phones.filter((_, i) => i !== index),
+      }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -89,11 +137,12 @@ const CustomerFormModal = ({
         throw new Error("Customer name is required");
       }
 
-      if (
-        formData.email &&
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
-      ) {
-        throw new Error("Please provide a valid email address");
+      // Validate emails
+      const validEmails = formData.emails.filter((email) => email.trim());
+      for (const email of validEmails) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new Error(`Please provide a valid email address: ${email}`);
+        }
       }
 
       // Prepare locations data
@@ -124,8 +173,10 @@ const CustomerFormModal = ({
 
       const customerData = {
         name: formData.name.trim(),
-        email: formData.email?.trim() || null,
-        phone: formData.phone?.trim() || null,
+        email: validEmails[0] || null, // Use first email for backward compatibility
+        phone: formData.phones.filter((phone) => phone.trim())[0] || null, // Use first phone for backward compatibility
+        emails: validEmails, // Store all emails
+        phones: formData.phones.filter((phone) => phone.trim()), // Store all phones
         customerType: formData.customerType,
         businessType: formData.businessType?.trim() || null,
         locations,
@@ -209,30 +260,82 @@ const CustomerFormModal = ({
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
+          {/* Multiple Emails Section */}
+          <div className="contact-section">
+            <h4>Email Addresses</h4>
+            {formData.emails.map((email, index) => (
+              <div key={index} className="contact-item">
+                <div className="contact-header">
+                  <span>Email {index + 1}</span>
+                  {formData.emails.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEmail(index)}
+                      className="remove-contact-btn"
+                      disabled={loading}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="form-group">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => handleEmailChange(index, e.target.value)}
+                    disabled={loading}
+                    placeholder="contact@company.com"
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addEmail}
+              className="add-contact-btn"
               disabled={loading}
-              placeholder="contact@company.com"
-            />
+            >
+              + Add Another Email
+            </button>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="phone">Phone</label>
-            <input
-              type="tel"
-              id="phone"
-              name="phone"
-              value={formData.phone}
-              onChange={handleInputChange}
+          {/* Multiple Phones Section */}
+          <div className="contact-section">
+            <h4>Phone Numbers</h4>
+            {formData.phones.map((phone, index) => (
+              <div key={index} className="contact-item">
+                <div className="contact-header">
+                  <span>Phone {index + 1}</span>
+                  {formData.phones.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removePhone(index)}
+                      className="remove-contact-btn"
+                      disabled={loading}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="form-group">
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => handlePhoneChange(index, e.target.value)}
+                    disabled={loading}
+                    placeholder="787-555-0123"
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addPhone}
+              className="add-contact-btn"
               disabled={loading}
-              placeholder="787-555-0123"
-            />
+            >
+              + Add Another Phone
+            </button>
           </div>
 
           <div className="form-row">
@@ -259,37 +362,37 @@ const CustomerFormModal = ({
                 value={formData.businessType}
                 onChange={handleInputChange}
                 disabled={loading}
-                placeholder="restaurant, retail, hotel..."
+                placeholder="e.g., Restaurant, Office, Store"
               />
             </div>
           </div>
 
           {/* Primary Location Section */}
           <div className="locations-section">
-            <h3>Primary Service Location</h3>
+            <h3>Primary Location</h3>
+
+            <div className="form-group">
+              <label htmlFor="streetAddress">Street Address</label>
+              <input
+                type="text"
+                id="streetAddress"
+                name="streetAddress"
+                value={formData.primaryLocation?.streetAddress || ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    primaryLocation: {
+                      ...prev.primaryLocation,
+                      streetAddress: e.target.value,
+                    },
+                  }))
+                }
+                disabled={loading}
+                placeholder="123 Main Street"
+              />
+            </div>
 
             <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="streetAddress">Street Address</label>
-                <input
-                  type="text"
-                  id="streetAddress"
-                  name="streetAddress"
-                  value={formData.primaryLocation?.streetAddress || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      primaryLocation: {
-                        ...prev.primaryLocation,
-                        streetAddress: e.target.value,
-                      },
-                    }))
-                  }
-                  disabled={loading}
-                  placeholder="123 Main Street"
-                />
-              </div>
-
               <div className="form-group">
                 <label htmlFor="city">City</label>
                 <input
@@ -310,9 +413,7 @@ const CustomerFormModal = ({
                   placeholder="San Juan"
                 />
               </div>
-            </div>
 
-            <div className="form-row">
               <div className="form-group">
                 <label htmlFor="state">State</label>
                 <input
@@ -333,30 +434,30 @@ const CustomerFormModal = ({
                   placeholder="PR"
                 />
               </div>
-
-              <div className="form-group">
-                <label htmlFor="postalCode">Postal Code</label>
-                <input
-                  type="text"
-                  id="postalCode"
-                  name="postalCode"
-                  value={formData.primaryLocation?.postalCode || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      primaryLocation: {
-                        ...prev.primaryLocation,
-                        postalCode: e.target.value,
-                      },
-                    }))
-                  }
-                  disabled={loading}
-                  placeholder="00901"
-                />
-              </div>
             </div>
 
-            {/* Additional Locations */}
+            <div className="form-group">
+              <label htmlFor="postalCode">Postal Code</label>
+              <input
+                type="text"
+                id="postalCode"
+                name="postalCode"
+                value={formData.primaryLocation?.postalCode || ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    primaryLocation: {
+                      ...prev.primaryLocation,
+                      postalCode: e.target.value,
+                    },
+                  }))
+                }
+                disabled={loading}
+                placeholder="00901"
+              />
+            </div>
+
+            {/* Additional Locations - IMPROVED STYLING */}
             {formData.additionalLocations &&
               formData.additionalLocations.length > 0 && (
                 <div className="additional-locations">
@@ -375,7 +476,8 @@ const CustomerFormModal = ({
                         </button>
                       </div>
 
-                      <div className="form-row">
+                      <div className="form-group">
+                        <label>Street Address</label>
                         <input
                           type="text"
                           value={location.streetAddress || ""}
@@ -389,35 +491,46 @@ const CustomerFormModal = ({
                           placeholder="Street Address"
                           disabled={loading}
                         />
-                        <input
-                          type="text"
-                          value={location.city || ""}
-                          onChange={(e) =>
-                            updateAdditionalLocation(
-                              index,
-                              "city",
-                              e.target.value
-                            )
-                          }
-                          placeholder="City"
-                          disabled={loading}
-                        />
                       </div>
 
                       <div className="form-row">
-                        <input
-                          type="text"
-                          value={location.state || "PR"}
-                          onChange={(e) =>
-                            updateAdditionalLocation(
-                              index,
-                              "state",
-                              e.target.value
-                            )
-                          }
-                          placeholder="State"
-                          disabled={loading}
-                        />
+                        <div className="form-group">
+                          <label>City</label>
+                          <input
+                            type="text"
+                            value={location.city || ""}
+                            onChange={(e) =>
+                              updateAdditionalLocation(
+                                index,
+                                "city",
+                                e.target.value
+                              )
+                            }
+                            placeholder="City"
+                            disabled={loading}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>State</label>
+                          <input
+                            type="text"
+                            value={location.state || "PR"}
+                            onChange={(e) =>
+                              updateAdditionalLocation(
+                                index,
+                                "state",
+                                e.target.value
+                              )
+                            }
+                            placeholder="State"
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Postal Code</label>
                         <input
                           type="text"
                           value={location.postalCode || ""}
@@ -485,7 +598,7 @@ const CustomerFormModal = ({
           background: white;
           border-radius: 8px;
           width: 90%;
-          max-width: 600px;
+          max-width: 700px;
           max-height: 90vh;
           overflow-y: auto;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
@@ -572,6 +685,71 @@ const CustomerFormModal = ({
           box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
         }
 
+        /* Contact Section Styles */
+        .contact-section {
+          margin: 25px 0;
+          padding: 20px;
+          background: #f8f9fa;
+          border-radius: 8px;
+          border: 1px solid #e9ecef;
+        }
+
+        .contact-section h4 {
+          margin: 0 0 15px 0;
+          color: #333;
+          font-size: 16px;
+        }
+
+        .contact-item {
+          background: white;
+          border: 1px solid #dee2e6;
+          border-radius: 6px;
+          padding: 15px;
+          margin-bottom: 10px;
+        }
+
+        .contact-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 10px;
+          font-weight: 500;
+          color: #495057;
+          font-size: 14px;
+        }
+
+        .remove-contact-btn {
+          background: #dc3545;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 11px;
+          transition: background 0.2s;
+        }
+
+        .remove-contact-btn:hover {
+          background: #c82333;
+        }
+
+        .add-contact-btn {
+          background: #28a745;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          transition: background 0.2s;
+        }
+
+        .add-contact-btn:hover {
+          background: #218838;
+        }
+
+        /* Location Section Styles */
         .locations-section {
           margin-top: 30px;
           padding-top: 20px;
@@ -592,7 +770,7 @@ const CustomerFormModal = ({
           background: #f8f9fa;
           border: 1px solid #e9ecef;
           border-radius: 8px;
-          padding: 15px;
+          padding: 20px;
           margin-bottom: 15px;
         }
 
@@ -600,9 +778,11 @@ const CustomerFormModal = ({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 15px;
+          margin-bottom: 20px;
           font-weight: 500;
           color: #495057;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #dee2e6;
         }
 
         .remove-location-btn {

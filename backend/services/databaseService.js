@@ -52,6 +52,9 @@ class DatabaseService {
       await this.pool.query(schema);
       console.log("✅ Database tables created/verified");
 
+      // Ensure contact_info column exists for multiple contacts support
+      await this.ensureContactInfoColumn();
+
       // Run initial data
       try {
         const initPath = path.join(__dirname, "../database/init.sql");
@@ -67,8 +70,71 @@ class DatabaseService {
     }
   }
 
+  // Ensure contact_info column exists for multiple emails/phones support
+  async ensureContactInfoColumn() {
+    try {
+      // Add contact_info column if it doesn't exist
+      await this.pool.query(`
+        ALTER TABLE customers 
+        ADD COLUMN IF NOT EXISTS contact_info JSONB;
+      `);
+
+      // Create index on contact_info for better query performance
+      await this.pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_customers_contact_info 
+        ON customers USING GIN (contact_info);
+      `);
+
+      console.log("✅ Contact info column ensured");
+    } catch (error) {
+      console.warn("⚠️ Could not ensure contact_info column:", error.message);
+    }
+  }
+
+  // Helper method to check if contact_info column exists
+  async checkContactInfoColumn(client = null) {
+    try {
+      const useClient = client || this.pool;
+      const result = await useClient.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'customers' AND column_name = 'contact_info'
+      `);
+      return result.rows.length > 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Helper method to parse customer contact info
+  parseCustomerContactInfo(customer) {
+    if (customer.contact_info) {
+      try {
+        const contactData =
+          typeof customer.contact_info === "string"
+            ? JSON.parse(customer.contact_info)
+            : customer.contact_info;
+        customer.emails = contactData.emails || [];
+        customer.phones = contactData.phones || [];
+      } catch (error) {
+        console.warn(
+          "Error parsing contact info for customer:",
+          customer.id,
+          error
+        );
+        customer.emails = customer.email ? [customer.email] : [];
+        customer.phones = customer.phone ? [customer.phone] : [];
+      }
+    } else {
+      // Fallback for customers without contact_info JSON
+      customer.emails = customer.email ? [customer.email] : [];
+      customer.phones = customer.phone ? [customer.phone] : [];
+    }
+    return customer;
+  }
+
   // ============================================================================
-  // CUSTOMER OPERATIONS (Enhanced with spatial support)
+  // CUSTOMER OPERATIONS (Enhanced with multiple contacts support)
   // ============================================================================
 
   async createCustomer(customerData, userId) {
@@ -76,6 +142,8 @@ class DatabaseService {
       name,
       email,
       phone,
+      emails,
+      phones,
       customerType,
       businessType,
       locations = [],
@@ -85,24 +153,62 @@ class DatabaseService {
     try {
       await client.query("BEGIN");
 
-      // Insert customer
-      const customerResult = await client.query(
-        `
-        INSERT INTO customers (company_id, name, email, phone, customer_type, business_type, created_by, is_active)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING *
-        `,
-        [
-          "550e8400-e29b-41d4-a716-446655440000", // Default company ID
-          name,
-          email,
-          phone,
-          customerType,
-          businessType,
-          userId,
-          true,
-        ]
-      );
+      // Prepare contact information JSON
+      const contactInfo = {
+        emails: emails || (email ? [email] : []),
+        phones: phones || (phone ? [phone] : []),
+      };
+
+      // Check if contact_info column exists
+      const hasContactInfo = await this.checkContactInfoColumn(client);
+
+      let customerResult;
+      if (hasContactInfo) {
+        // Insert customer with contact_info support
+        customerResult = await client.query(
+          `
+          INSERT INTO customers (
+            company_id, name, email, phone, customer_type, business_type, 
+            created_by, is_active, contact_info
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING *
+          `,
+          [
+            "550e8400-e29b-41d4-a716-446655440000", // Default company ID
+            name,
+            email || (emails && emails[0]) || null, // Primary email for backward compatibility
+            phone || (phones && phones[0]) || null, // Primary phone for backward compatibility
+            customerType,
+            businessType,
+            userId,
+            true,
+            JSON.stringify(contactInfo), // Store all contact info as JSON
+          ]
+        );
+      } else {
+        // Fallback for databases without contact_info column
+        customerResult = await client.query(
+          `
+          INSERT INTO customers (
+            company_id, name, email, phone, customer_type, business_type, 
+            created_by, is_active
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING *
+          `,
+          [
+            "550e8400-e29b-41d4-a716-446655440000", // Default company ID
+            name,
+            email || (emails && emails[0]) || null,
+            phone || (phones && phones[0]) || null,
+            customerType,
+            businessType,
+            userId,
+            true,
+          ]
+        );
+      }
 
       const customer = customerResult.rows[0];
 
@@ -168,7 +274,12 @@ class DatabaseService {
     }
 
     const result = await this.pool.query(query, params);
-    return result.rows;
+
+    // Parse contact info for each customer
+    return result.rows.map((customer) => {
+      this.parseCustomerContactInfo(customer);
+      return customer;
+    });
   }
 
   async getCustomerById(customerId) {
@@ -186,6 +297,9 @@ class DatabaseService {
     if (customerResult.rows.length === 0) return null;
 
     const customer = customerResult.rows[0];
+
+    // Parse contact info and add to customer object
+    this.parseCustomerContactInfo(customer);
 
     // Get locations with spatial data
     const locationsResult = await this.pool.query(
@@ -213,21 +327,75 @@ class DatabaseService {
       ...customer,
       locations: locationsResult.rows,
       equipment: equipmentResult.rows,
+      location_count: locationsResult.rows.length,
+      equipment_count: equipmentResult.rows.length,
     };
   }
 
   async updateCustomer(customerId, customerData) {
-    const { name, email, phone, customerType, businessType } = customerData;
+    const { name, email, phone, emails, phones, customerType, businessType } =
+      customerData;
 
-    const result = await this.pool.query(
-      `
-      UPDATE customers 
-      SET name = $1, email = $2, phone = $3, customer_type = $4, business_type = $5, updated_at = NOW()
-      WHERE id = $6 AND is_active = TRUE
-      RETURNING *
-      `,
-      [name, email, phone, customerType, businessType, customerId]
-    );
+    // Check if contact_info column exists
+    const hasContactInfo = await this.checkContactInfoColumn();
+
+    let result;
+    if (hasContactInfo) {
+      // Prepare contact information JSON
+      const contactInfo = {
+        emails: emails || (email ? [email] : []),
+        phones: phones || (phone ? [phone] : []),
+      };
+
+      result = await this.pool.query(
+        `
+        UPDATE customers 
+        SET 
+          name = $1,
+          email = $2,
+          phone = $3,
+          customer_type = $4,
+          business_type = $5,
+          contact_info = $6,
+          updated_at = NOW()
+        WHERE id = $7 AND is_active = TRUE
+        RETURNING *
+        `,
+        [
+          name,
+          email || (emails && emails[0]) || null, // Primary email for backward compatibility
+          phone || (phones && phones[0]) || null, // Primary phone for backward compatibility
+          customerType,
+          businessType,
+          JSON.stringify(contactInfo), // Store all contact info as JSON
+          customerId,
+        ]
+      );
+    } else {
+      // Fallback for databases without contact_info column
+      result = await this.pool.query(
+        `
+        UPDATE customers 
+        SET 
+          name = $1,
+          email = $2,
+          phone = $3,
+          customer_type = $4,
+          business_type = $5,
+          updated_at = NOW()
+        WHERE id = $6 AND is_active = TRUE
+        RETURNING *
+        `,
+        [
+          name,
+          email || (emails && emails[0]) || null,
+          phone || (phones && phones[0]) || null,
+          customerType,
+          businessType,
+          customerId,
+        ]
+      );
+    }
 
     if (result.rows.length === 0) return null;
     return await this.getCustomerById(customerId);
@@ -313,6 +481,86 @@ class DatabaseService {
     );
 
     return result.rows[0];
+  }
+
+  async updateCustomerLocation(locationId, locationData) {
+    const {
+      addressType,
+      streetAddress,
+      addressLine2,
+      city,
+      state,
+      postalCode,
+      country,
+      accessNotes,
+      gateCode,
+      contactPerson,
+      contactPhone,
+      serviceHours,
+      isPrimary,
+      latitude,
+      longitude,
+    } = locationData;
+
+    const result = await this.pool.query(
+      `
+      UPDATE customer_locations
+      SET 
+        address_type = COALESCE($1, address_type),
+        street_address = COALESCE($2, street_address),
+        address = COALESCE($2, address),
+        address_line_2 = $3,
+        city = COALESCE($4, city),
+        state = COALESCE($5, state),
+        postal_code = COALESCE($6, postal_code),
+        zip_code = COALESCE($6, zip_code),
+        country = COALESCE($7, country),
+        access_notes = $8,
+        gate_code = $9,
+        contact_person = $10,
+        contact_phone = $11,
+        service_hours = $12,
+        is_primary = COALESCE($13, is_primary),
+        latitude = $14,
+        longitude = $15,
+        updated_at = NOW()
+      WHERE id = $16 AND is_active = TRUE
+      RETURNING *
+      `,
+      [
+        addressType,
+        streetAddress,
+        addressLine2,
+        city,
+        state,
+        postalCode,
+        country,
+        accessNotes,
+        gateCode,
+        contactPerson,
+        contactPhone,
+        serviceHours,
+        isPrimary,
+        latitude,
+        longitude,
+        locationId,
+      ]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  async deleteCustomerLocation(locationId) {
+    const result = await this.pool.query(
+      `
+      UPDATE customer_locations 
+      SET is_active = FALSE, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [locationId]
+    );
+    return result.rowCount > 0;
   }
 
   async updateLocationGeometry(
