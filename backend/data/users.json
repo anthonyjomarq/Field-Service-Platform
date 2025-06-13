@@ -8,5 +8,25 @@
     "role": "admin",
     "createdAt": "2025-06-13T12:02:02.658Z",
     "isActive": true
+  },
+  {
+    "id": "1749819685384",
+    "email": "wildtigeryt@gmail.com",
+    "password": "$2b$12$fdTnJbBXXu0EPRMOKZNVFu8UaKs3s7oIYAsrQmzZVaXJpTpBe6HmC",
+    "firstName": "Anthony",
+    "lastName": "Colon",
+    "role": "admin",
+    "createdAt": "2025-06-13T13:01:25.384Z",
+    "isActive": true
+  },
+  {
+    "id": "1749820047209",
+    "email": "technician@gmail.com",
+    "password": "$2b$12$B3M6KdWyA8/VdV5C.AWJZ.7OvlFzLpsqE/cuo6aQ6J3gYo0azMDq2",
+    "firstName": "Test",
+    "lastName": "Technician",
+    "role": "technician",
+    "createdAt": "2025-06-13T13:07:27.209Z",
+    "isActive": true
   }
 ]
