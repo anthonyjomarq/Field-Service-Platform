@@ -1,36 +1,12 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
-
-// Get current directory
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import databaseService from "./databaseService.js";
 
 class AuthService {
   constructor() {
-    this.usersFile = path.join(__dirname, "../data/users.json");
     this.jwtSecret =
       process.env.JWT_SECRET || "super-secret-key-change-in-production";
     this.jwtExpiry = "24h";
-  }
-
-  // Read users from JSON file
-  async getUsers() {
-    try {
-      const data = await fs.readFile(this.usersFile, "utf8");
-      return JSON.parse(data);
-    } catch (error) {
-      console.log("No users file found, creating new one");
-      await fs.writeFile(this.usersFile, "[]");
-      return [];
-    }
-  }
-
-  // Save users to JSON file
-  async saveUsers(users) {
-    await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2));
   }
 
   // Hash password securely
@@ -50,8 +26,8 @@ class AuthService {
       userId: user.id,
       email: user.email,
       role: user.role,
-      firstName: user.firstName,
-      lastName: user.lastName,
+      firstName: user.first_name,
+      lastName: user.last_name,
     };
 
     return jwt.sign(payload, this.jwtSecret, {
@@ -86,43 +62,36 @@ class AuthService {
     } = userData;
 
     try {
-      // Get existing users
-      const users = await this.getUsers();
-
       // Check if user already exists
-      const existingUser = users.find(
-        (user) => user.email.toLowerCase() === email.toLowerCase()
-      );
+      const existingUser = await databaseService.getUserByEmail(email);
       if (existingUser) {
         throw new Error("User with this email already exists");
       }
 
-      // Create new user
-      const hashedPassword = await this.hashPassword(password);
-      const newUser = {
-        id: Date.now().toString(), // Simple ID for now
-        email: email.toLowerCase(),
-        password: hashedPassword,
+      // Hash password
+      const passwordHash = await this.hashPassword(password);
+
+      // Create user in database
+      const newUser = await databaseService.createUser({
+        email,
+        passwordHash,
         firstName,
         lastName,
         role,
-        createdAt: new Date().toISOString(),
-        isActive: true,
-      };
-
-      // Add to users array
-      users.push(newUser);
-      await this.saveUsers(users);
+      });
 
       // Generate token
       const token = this.generateToken(newUser);
 
-      // Return user data (without password)
-      const { password: _, ...userWithoutPassword } = newUser;
-
       return {
         success: true,
-        user: userWithoutPassword,
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          firstName: newUser.first_name,
+          lastName: newUser.last_name,
+          role: newUser.role,
+        },
         token,
       };
     } catch (error) {
@@ -134,13 +103,8 @@ class AuthService {
   // Login user
   async login(email, password) {
     try {
-      // Get users
-      const users = await this.getUsers();
-
-      // Find user by email
-      const user = users.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.isActive
-      );
+      // Get user from database
+      const user = await databaseService.getUserByEmail(email);
       if (!user) {
         throw new Error("Invalid credentials");
       }
@@ -148,7 +112,7 @@ class AuthService {
       // Verify password
       const isPasswordValid = await this.verifyPassword(
         password,
-        user.password
+        user.password_hash
       );
       if (!isPasswordValid) {
         throw new Error("Invalid credentials");
@@ -157,12 +121,15 @@ class AuthService {
       // Generate token
       const token = this.generateToken(user);
 
-      // Return user data (without password)
-      const { password: _, ...userWithoutPassword } = user;
-
       return {
         success: true,
-        user: userWithoutPassword,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role,
+        },
         token,
       };
     } catch (error) {
@@ -174,16 +141,18 @@ class AuthService {
   // Get user by ID
   async getUserById(userId) {
     try {
-      const users = await this.getUsers();
-      const user = users.find((u) => u.id === userId && u.isActive);
-
+      const user = await databaseService.getUserById(userId);
       if (!user) {
         return null;
       }
 
-      // Return user without password
-      const { password: _, ...userWithoutPassword } = user;
-      return userWithoutPassword;
+      return {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+      };
     } catch (error) {
       console.error("Get user error:", error);
       throw error;

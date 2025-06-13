@@ -3,9 +3,14 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
 import { authenticate, authorize } from "./middleware/auth.js";
+import databaseService from "./services/databaseService.js";
+import customerRoutes from "./routes/customers.js";
 
 // Load environment variables
 dotenv.config();
+
+// Initialize database before starting server
+databaseService.initialize().catch(console.error);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -66,6 +71,8 @@ app.get("/api/admin-only", authenticate, authorize(["admin"]), (req, res) => {
     secret: "Only admins can see this data",
   });
 });
+
+app.use("/api/customers", customerRoutes);
 
 // Start the server
 app.listen(PORT, () => {

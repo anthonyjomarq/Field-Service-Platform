@@ -66,4 +66,44 @@ export const authAPI = {
   },
 };
 
+// Customer API functions
+export const customerAPI = {
+  // Get all customers
+  getCustomers: async (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.search) params.append("search", filters.search);
+    if (filters.customerType)
+      params.append("customerType", filters.customerType);
+    if (filters.limit) params.append("limit", filters.limit);
+
+    const url = `/customers${params.toString() ? "?" + params.toString() : ""}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Get customer by ID
+  getCustomer: async (customerId) => {
+    const response = await api.get(`/customers/${customerId}`);
+    return response.data;
+  },
+
+  // Create new customer
+  createCustomer: async (customerData) => {
+    const response = await api.post("/customers", customerData);
+    return response.data;
+  },
+
+  // Update customer
+  updateCustomer: async (customerId, customerData) => {
+    const response = await api.put(`/customers/${customerId}`, customerData);
+    return response.data;
+  },
+
+  // Delete customer
+  deleteCustomer: async (customerId) => {
+    const response = await api.delete(`/customers/${customerId}`);
+    return response.data;
+  },
+};
+
 export default api;

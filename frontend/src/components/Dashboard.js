@@ -40,6 +40,14 @@ const Dashboard = () => {
         </ul>
       </div>
 
+      <button
+        onClick={() => (window.location.hash = "customers")}
+        className="btn"
+        style={{ width: "auto", marginRight: "10px" }}
+      >
+        Manage Customers
+      </button>
+
       <button onClick={handleLogout} className="btn">
         Logout
       </button>
