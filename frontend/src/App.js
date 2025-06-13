@@ -4,6 +4,7 @@ import Login from "./components/Login";
 import Register from "./components/Register";
 import Dashboard from "./components/Dashboard";
 import CustomerList from "./components/customers/CustomerList";
+import RoutePlanner from "./components/routes/RoutePlanner";
 
 // Main app content (wrapped by AuthProvider)
 const AppContent = () => {
@@ -63,6 +64,20 @@ const AppContent = () => {
           >
             Customers
           </button>
+
+          <button
+            onClick={() => setCurrentView("routes")}
+            style={{
+              background: currentView === "routes" ? "#0056b3" : "transparent",
+              color: "white",
+              border: "1px solid white",
+              padding: "8px 16px",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            Route Planning
+          </button>
         </div>
         <h2 style={{ color: "white", margin: 0 }}>Field Service Platform</h2>
       </div>
@@ -73,6 +88,7 @@ const AppContent = () => {
         {renderHeader()}
         {currentView === "dashboard" && <Dashboard />}
         {currentView === "customers" && <CustomerList />}
+        {currentView === "routes" && <RoutePlanner />}
       </>
     );
   }

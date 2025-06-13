@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { customerAPI } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
+import CustomerFormModal from "./CustomerFormModal";
 
 const CustomerList = () => {
   const [customers, setCustomers] = useState([]);
@@ -9,12 +10,25 @@ const CustomerList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("");
 
+  // Modal states
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [formMode, setFormMode] = useState("create");
+
+  // Customer details modal
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+
+  // Delete confirmation
+  const [deletingCustomer, setDeletingCustomer] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
   const { user } = useAuth();
 
-  // Load customers when component mounts
+  // Load customers when component mounts or filters change
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [searchTerm, filterType]);
 
   const loadCustomers = async () => {
     try {
@@ -35,19 +49,70 @@ const CustomerList = () => {
     }
   };
 
-  // Search customers
-  const handleSearch = () => {
-    loadCustomers();
+  const handleCreateCustomer = () => {
+    setEditingCustomer(null);
+    setFormMode("create");
+    setShowFormModal(true);
   };
 
-  // Clear filters
+  const handleEditCustomer = async (customer) => {
+    try {
+      // Get full customer details including locations
+      const fullCustomer = await customerAPI.getCustomer(customer.id);
+      setEditingCustomer(fullCustomer);
+      setFormMode("edit");
+      setShowFormModal(true);
+    } catch (err) {
+      setError("Failed to load customer details: " + err.message);
+    }
+  };
+
+  const handleCustomerSaved = (savedCustomer) => {
+    if (formMode === "create") {
+      setCustomers((prev) => [savedCustomer, ...prev]);
+    } else {
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === savedCustomer.id ? { ...c, ...savedCustomer } : c
+        )
+      );
+    }
+    setShowFormModal(false);
+    setEditingCustomer(null);
+  };
+
+  const handleViewDetails = async (customer) => {
+    try {
+      const fullCustomer = await customerAPI.getCustomer(customer.id);
+      setSelectedCustomer(fullCustomer);
+      setShowDetailsModal(true);
+    } catch (err) {
+      setError("Failed to load customer details: " + err.message);
+    }
+  };
+
+  const handleDeleteClick = (customer) => {
+    setDeletingCustomer(customer);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await customerAPI.deleteCustomer(deletingCustomer.id);
+      setCustomers((prev) => prev.filter((c) => c.id !== deletingCustomer.id));
+      setShowDeleteModal(false);
+      setDeletingCustomer(null);
+    } catch (err) {
+      setError("Failed to delete customer: " + err.message);
+    }
+  };
+
   const clearFilters = () => {
     setSearchTerm("");
     setFilterType("");
-    setTimeout(loadCustomers, 100);
   };
 
-  if (loading) {
+  if (loading && customers.length === 0) {
     return (
       <div className="container">
         <h2>Loading customers...</h2>
@@ -56,227 +121,797 @@ const CustomerList = () => {
   }
 
   return (
-    <div className="container" style={{ maxWidth: "800px" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "20px",
-        }}
-      >
-        <h2>Customer Management</h2>
-        <button className="btn" style={{ width: "auto" }}>
-          + Add New Customer
-        </button>
+    <div className="customer-list-container">
+      <div className="header">
+        <div className="header-content">
+          <h2>Customer Management</h2>
+          <button className="primary-btn" onClick={handleCreateCustomer}>
+            + Add New Customer
+          </button>
+        </div>
       </div>
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="error-message">
+          {error}
+          <button onClick={() => setError("")} className="close-error">
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Search and Filter Bar */}
-      <div
-        style={{
-          marginBottom: "20px",
-          padding: "15px",
-          background: "#f8f9fa",
-          borderRadius: "4px",
-        }}
-      >
-        <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+      <div className="filters-section">
+        <div className="filters-content">
           <input
             type="text"
             placeholder="Search customers..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ flex: 1, padding: "8px" }}
+            className="search-input"
           />
 
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            style={{ padding: "8px", minWidth: "150px" }}
+            className="filter-select"
           >
             <option value="">All Types</option>
             <option value="commercial">Commercial</option>
             <option value="residential">Residential</option>
           </select>
 
-          <button
-            onClick={handleSearch}
-            className="btn"
-            style={{ width: "auto" }}
-          >
-            Search
-          </button>
-
-          <button
-            onClick={clearFilters}
-            style={{
-              padding: "8px 15px",
-              background: "#6c757d",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            Clear
-          </button>
+          {(searchTerm || filterType) && (
+            <button onClick={clearFilters} className="clear-filters-btn">
+              Clear Filters
+            </button>
+          )}
         </div>
 
-        <p style={{ margin: 0, fontSize: "14px", color: "#666" }}>
-          Found {customers.length} customers
-        </p>
+        <div className="results-info">Found {customers.length} customers</div>
       </div>
 
-      {/* Customer List */}
+      {/* Customer Grid */}
       {customers.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
+        <div className="empty-state">
           <h3>No customers found</h3>
-          <p>Try adjusting your search criteria or add a new customer.</p>
+          <p>
+            {searchTerm || filterType
+              ? "Try adjusting your search criteria or "
+              : "Get started by adding your first customer."}
+          </p>
+          <button onClick={handleCreateCustomer} className="primary-btn">
+            Add New Customer
+          </button>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: "15px" }}>
+        <div className="customers-grid">
           {customers.map((customer) => (
-            <div
-              key={customer.id}
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: "8px",
-                padding: "20px",
-                background: "white",
-                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "start",
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: "0 0 10px 0", color: "#333" }}>
-                    {customer.name}
-                  </h3>
+            <div key={customer.id} className="customer-card">
+              <div className="customer-header">
+                <h3 className="customer-name">{customer.name}</h3>
+                <span className={`customer-type ${customer.customer_type}`}>
+                  {customer.customer_type}
+                </span>
+              </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(200px, 1fr))",
-                      gap: "10px",
-                      marginBottom: "15px",
-                    }}
-                  >
-                    <div>
-                      <strong>Email:</strong> {customer.email || "Not provided"}
-                    </div>
-                    <div>
-                      <strong>Phone:</strong> {customer.phone || "Not provided"}
-                    </div>
-                    <div>
-                      <strong>Type:</strong>
-                      <span
-                        style={{
-                          background:
-                            customer.customer_type === "commercial"
-                              ? "#007bff"
-                              : "#28a745",
-                          color: "white",
-                          padding: "2px 8px",
-                          borderRadius: "12px",
-                          fontSize: "12px",
-                          marginLeft: "5px",
-                        }}
-                      >
-                        {customer.customer_type}
-                      </span>
-                    </div>
-                    <div>
-                      <strong>Business:</strong>{" "}
-                      {customer.business_type || "Not specified"}
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: "14px", color: "#666" }}>
-                    <div>
-                      <strong>Locations:</strong> {customer.location_count} •
-                      <strong> Equipment:</strong> {customer.equipment_count} •
-                      <strong> Created:</strong>{" "}
-                      {new Date(customer.created_at).toLocaleDateString()}
-                    </div>
-                    <div>
-                      <strong>Created by:</strong> {customer.created_by_name}{" "}
-                      {customer.created_by_lastname}
-                    </div>
-                  </div>
+              <div className="customer-info">
+                <div className="info-row">
+                  <strong>Email:</strong>
+                  <span>{customer.email || "Not provided"}</span>
                 </div>
+                <div className="info-row">
+                  <strong>Phone:</strong>
+                  <span>{customer.phone || "Not provided"}</span>
+                </div>
+                <div className="info-row">
+                  <strong>Business:</strong>
+                  <span>{customer.business_type || "Not specified"}</span>
+                </div>
+              </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    marginLeft: "20px",
-                  }}
+              <div className="customer-stats">
+                <div className="stat">
+                  <span className="stat-number">{customer.location_count}</span>
+                  <span className="stat-label">Locations</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-number">
+                    {customer.equipment_count}
+                  </span>
+                  <span className="stat-label">Equipment</span>
+                </div>
+              </div>
+
+              <div className="customer-meta">
+                <div className="created-info">
+                  Created by {customer.created_by_name}{" "}
+                  {customer.created_by_lastname}
+                </div>
+                <div className="created-date">
+                  {new Date(customer.created_at).toLocaleDateString()}
+                </div>
+              </div>
+
+              <div className="customer-actions">
+                <button
+                  onClick={() => handleViewDetails(customer)}
+                  className="action-btn view-btn"
+                  title="View Details"
                 >
+                  View Details
+                </button>
+                <button
+                  onClick={() => handleEditCustomer(customer)}
+                  className="action-btn edit-btn"
+                  title="Edit Customer"
+                >
+                  Edit
+                </button>
+                {user?.role === "admin" && (
                   <button
-                    style={{
-                      padding: "6px 12px",
-                      background: "#007bff",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                    }}
-                    onClick={() => alert(`View details for ${customer.name}`)}
+                    onClick={() => handleDeleteClick(customer)}
+                    className="action-btn delete-btn"
+                    title="Delete Customer"
                   >
-                    View Details
+                    Delete
                   </button>
-
-                  <button
-                    style={{
-                      padding: "6px 12px",
-                      background: "#28a745",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                    }}
-                    onClick={() => alert(`Edit ${customer.name}`)}
-                  >
-                    Edit
-                  </button>
-
-                  {user?.role === "admin" && (
-                    <button
-                      style={{
-                        padding: "6px 12px",
-                        background: "#dc3545",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                      }}
-                      onClick={() => {
-                        if (window.confirm(`Delete ${customer.name}?`)) {
-                          alert("Delete functionality coming soon");
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Customer Form Modal */}
+      <CustomerFormModal
+        isOpen={showFormModal}
+        onClose={() => {
+          setShowFormModal(false);
+          setEditingCustomer(null);
+        }}
+        onSave={handleCustomerSaved}
+        customer={editingCustomer}
+        mode={formMode}
+      />
+
+      {/* Customer Details Modal */}
+      {showDetailsModal && selectedCustomer && (
+        <CustomerDetailsModal
+          customer={selectedCustomer}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedCustomer(null);
+          }}
+          onEdit={() => {
+            setShowDetailsModal(false);
+            handleEditCustomer(selectedCustomer);
+          }}
+          onDelete={
+            user?.role === "admin"
+              ? () => {
+                  setShowDetailsModal(false);
+                  handleDeleteClick(selectedCustomer);
+                }
+              : null
+          }
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && deletingCustomer && (
+        <DeleteConfirmationModal
+          customer={deletingCustomer}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => {
+            setShowDeleteModal(false);
+            setDeletingCustomer(null);
+          }}
+        />
+      )}
+
+      <style jsx>{`
+        .customer-list-container {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+
+        .header {
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          margin-bottom: 20px;
+        }
+
+        .header-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 20px;
+        }
+
+        .header h2 {
+          margin: 0;
+          color: #333;
+        }
+
+        .primary-btn {
+          background: #007bff;
+          color: white;
+          border: none;
+          padding: 12px 20px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 500;
+          transition: background 0.2s;
+        }
+
+        .primary-btn:hover {
+          background: #0056b3;
+        }
+
+        .error-message {
+          background: #f8d7da;
+          color: #721c24;
+          padding: 15px;
+          border-radius: 6px;
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .close-error {
+          background: none;
+          border: none;
+          color: #721c24;
+          cursor: pointer;
+          font-size: 18px;
+          padding: 0;
+          width: 20px;
+          height: 20px;
+        }
+
+        .filters-section {
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          padding: 20px;
+          margin-bottom: 20px;
+        }
+
+        .filters-content {
+          display: flex;
+          gap: 15px;
+          align-items: center;
+          margin-bottom: 10px;
+        }
+
+        .search-input {
+          flex: 1;
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+        }
+
+        .filter-select {
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+          min-width: 150px;
+        }
+
+        .clear-filters-btn {
+          padding: 10px 15px;
+          background: #6c757d;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+
+        .clear-filters-btn:hover {
+          background: #5a6268;
+        }
+
+        .results-info {
+          color: #666;
+          font-size: 14px;
+        }
+
+        .empty-state {
+          text-align: center;
+          padding: 60px 20px;
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .empty-state h3 {
+          color: #333;
+          margin-bottom: 10px;
+        }
+
+        .empty-state p {
+          color: #666;
+          margin-bottom: 20px;
+        }
+
+        .customers-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+          gap: 20px;
+        }
+
+        .customer-card {
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          padding: 20px;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .customer-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .customer-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 15px;
+        }
+
+        .customer-name {
+          margin: 0;
+          color: #333;
+          font-size: 18px;
+          flex: 1;
+        }
+
+        .customer-type {
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 500;
+          text-transform: uppercase;
+        }
+
+        .customer-type.commercial {
+          background: #e3f2fd;
+          color: #1976d2;
+        }
+
+        .customer-type.residential {
+          background: #f3e5f5;
+          color: #7b1fa2;
+        }
+
+        .customer-info {
+          margin-bottom: 15px;
+        }
+
+        .info-row {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 8px;
+          font-size: 14px;
+        }
+
+        .info-row strong {
+          color: #333;
+          min-width: 80px;
+        }
+
+        .info-row span {
+          color: #666;
+          text-align: right;
+        }
+
+        .customer-stats {
+          display: flex;
+          gap: 20px;
+          margin-bottom: 15px;
+          padding: 15px;
+          background: #f8f9fa;
+          border-radius: 6px;
+        }
+
+        .stat {
+          text-align: center;
+          flex: 1;
+        }
+
+        .stat-number {
+          display: block;
+          font-size: 24px;
+          font-weight: bold;
+          color: #007bff;
+        }
+
+        .stat-label {
+          display: block;
+          font-size: 12px;
+          color: #666;
+          text-transform: uppercase;
+        }
+
+        .customer-meta {
+          margin-bottom: 15px;
+          padding-top: 15px;
+          border-top: 1px solid #eee;
+        }
+
+        .created-info {
+          font-size: 12px;
+          color: #666;
+        }
+
+        .created-date {
+          font-size: 12px;
+          color: #999;
+        }
+
+        .customer-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .action-btn {
+          flex: 1;
+          padding: 8px 12px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 500;
+          transition: background 0.2s;
+        }
+
+        .view-btn {
+          background: #17a2b8;
+          color: white;
+        }
+
+        .view-btn:hover {
+          background: #138496;
+        }
+
+        .edit-btn {
+          background: #28a745;
+          color: white;
+        }
+
+        .edit-btn:hover {
+          background: #218838;
+        }
+
+        .delete-btn {
+          background: #dc3545;
+          color: white;
+        }
+
+        .delete-btn:hover {
+          background: #c82333;
+        }
+
+        @media (max-width: 768px) {
+          .customers-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .filters-content {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .header-content {
+            flex-direction: column;
+            gap: 15px;
+            align-items: stretch;
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Customer Details Modal Component
+const CustomerDetailsModal = ({ customer, onClose, onEdit, onDelete }) => {
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <div className="modal-header">
+          <h2>{customer.name}</h2>
+          <button onClick={onClose} className="close-button">
+            ×
+          </button>
+        </div>
+
+        <div className="details-content">
+          <div className="details-section">
+            <h3>Contact Information</h3>
+            <div className="detail-row">
+              <strong>Email:</strong> {customer.email || "Not provided"}
+            </div>
+            <div className="detail-row">
+              <strong>Phone:</strong> {customer.phone || "Not provided"}
+            </div>
+            <div className="detail-row">
+              <strong>Type:</strong> {customer.customer_type}
+            </div>
+            <div className="detail-row">
+              <strong>Business:</strong>{" "}
+              {customer.business_type || "Not specified"}
+            </div>
+          </div>
+
+          {customer.locations && customer.locations.length > 0 && (
+            <div className="details-section">
+              <h3>Locations ({customer.locations.length})</h3>
+              {customer.locations.map((location, index) => (
+                <div key={index} className="location-detail">
+                  <div className="location-header">
+                    <strong>
+                      {location.street_address || location.address}
+                    </strong>
+                    <span className="location-type">
+                      ({location.address_type})
+                    </span>
+                  </div>
+                  <div>
+                    {location.city}, {location.state}{" "}
+                    {location.postal_code || location.zip_code}
+                  </div>
+                  {location.contact_person && (
+                    <div className="location-contact">
+                      Contact: {location.contact_person}
+                    </div>
+                  )}
+                  {location.service_hours && (
+                    <div className="location-hours">
+                      Hours: {location.service_hours}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {customer.equipment && customer.equipment.length > 0 && (
+            <div className="details-section">
+              <h3>Equipment ({customer.equipment.length})</h3>
+              {customer.equipment.map((item, index) => (
+                <div key={index} className="equipment-detail">
+                  <strong>{item.equipment_type}</strong> - {item.brand}{" "}
+                  {item.model}
+                  {item.serial_number && (
+                    <div>Serial: {item.serial_number}</div>
+                  )}
+                  <div className="equipment-status">Status: {item.status}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-actions">
+          <button onClick={onEdit} className="edit-btn">
+            Edit Customer
+          </button>
+          {onDelete && (
+            <button onClick={onDelete} className="delete-btn">
+              Delete Customer
+            </button>
+          )}
+          <button onClick={onClose} className="close-btn">
+            Close
+          </button>
+        </div>
+
+        <style jsx>{`
+          .details-content {
+            padding: 20px;
+            max-height: 60vh;
+            overflow-y: auto;
+          }
+
+          .details-section {
+            margin-bottom: 25px;
+          }
+
+          .details-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+          }
+
+          .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 8px 0;
+          }
+
+          .detail-row strong {
+            color: #333;
+          }
+
+          .location-detail,
+          .equipment-detail {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+          }
+
+          .location-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+          }
+
+          .location-type {
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+          }
+
+          .location-contact,
+          .location-hours {
+            font-size: 14px;
+            color: #666;
+            margin-top: 4px;
+          }
+
+          .equipment-status {
+            font-size: 14px;
+            color: #666;
+            margin-top: 4px;
+          }
+
+          .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 20px;
+            border-top: 1px solid #eee;
+            background: #f8f9fa;
+          }
+
+          .edit-btn {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: 1px solid #28a745;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          }
+
+          .edit-btn:hover {
+            background: #218838;
+            border-color: #218838;
+          }
+
+          .delete-btn {
+            padding: 10px 20px;
+            background: #dc3545;
+            color: white;
+            border: 1px solid #dc3545;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          }
+
+          .delete-btn:hover {
+            background: #c82333;
+            border-color: #c82333;
+          }
+
+          .close-btn {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          }
+
+          .close-btn:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+          }
+        `}</style>
+      </div>
+    </div>
+  );
+};
+
+// Delete Confirmation Modal
+const DeleteConfirmationModal = ({ customer, onConfirm, onCancel }) => {
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: "400px" }}>
+        <div className="modal-header">
+          <h3>Confirm Deletion</h3>
+        </div>
+
+        <div style={{ padding: "20px" }}>
+          <p>
+            Are you sure you want to delete <strong>{customer.name}</strong>?
+          </p>
+          <p style={{ color: "#666", fontSize: "14px" }}>
+            This will mark the customer as inactive. This action can be reversed
+            by an administrator.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button onClick={onCancel} className="cancel-btn">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className="confirm-delete-btn">
+            Delete Customer
+          </button>
+        </div>
+
+        <style jsx>{`
+          .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 20px;
+            border-top: 1px solid #eee;
+            background: #f8f9fa;
+          }
+
+          .cancel-btn {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          }
+
+          .cancel-btn:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+          }
+
+          .confirm-delete-btn {
+            padding: 10px 20px;
+            background: #dc3545;
+            color: white;
+            border: 1px solid #dc3545;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+          }
+
+          .confirm-delete-btn:hover {
+            background: #c82333;
+            border-color: #c82333;
+          }
+        `}</style>
+      </div>
     </div>
   );
 };

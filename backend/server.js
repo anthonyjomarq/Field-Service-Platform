@@ -5,6 +5,8 @@ import authRoutes from "./routes/auth.js";
 import { authenticate, authorize } from "./middleware/auth.js";
 import databaseService from "./services/databaseService.js";
 import customerRoutes from "./routes/customers.js";
+import routeRoutes from "./routes/routes.js";
+import healthRoutes from "./routes/health.js";
 
 // Load environment variables
 dotenv.config();
@@ -54,6 +56,8 @@ app.get("/health", (req, res) => {
 // Authentication routes
 app.use("/api/auth", authRoutes);
 
+app.use("/api/health", healthRoutes);
+
 // Protected test route
 app.get("/api/protected", authenticate, (req, res) => {
   res.json({
@@ -73,6 +77,7 @@ app.get("/api/admin-only", authenticate, authorize(["admin"]), (req, res) => {
 });
 
 app.use("/api/customers", customerRoutes);
+app.use("/api/routes", routeRoutes);
 
 // Start the server
 app.listen(PORT, () => {

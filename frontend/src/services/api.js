@@ -106,4 +106,31 @@ export const customerAPI = {
   },
 };
 
+export const routeAPI = {
+  // Get customers for route planning
+  getRouteCustomers: async (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.search) params.append("search", filters.search);
+    if (filters.limit) params.append("limit", filters.limit);
+
+    const url = `/routes/customers${
+      params.toString() ? "?" + params.toString() : ""
+    }`;
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Optimize route
+  optimizeRoute: async (routeData) => {
+    const response = await api.post("/routes/optimize", routeData);
+    return response.data;
+  },
+
+  // Get route history
+  getRouteHistory: async () => {
+    const response = await api.get("/routes/history");
+    return response.data;
+  },
+};
+
 export default api;

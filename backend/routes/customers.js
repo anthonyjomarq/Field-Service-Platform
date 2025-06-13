@@ -67,6 +67,19 @@ router.post("/", authenticate, async (req, res) => {
       });
     }
 
+    // Enhanced validation
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        error: "Please provide a valid email address",
+      });
+    }
+
+    if (phone && !/^[\d\s\-\(\)\+]+$/.test(phone)) {
+      return res.status(400).json({
+        error: "Please provide a valid phone number",
+      });
+    }
+
     const customerData = {
       name: name.trim(),
       email: email?.trim() || null,
@@ -87,6 +100,14 @@ router.post("/", authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating customer:", error);
+
+    // Handle specific database errors
+    if (error.message.includes("duplicate key")) {
+      return res.status(409).json({
+        error: "A customer with this email already exists",
+      });
+    }
+
     res.status(400).json({
       error: "Failed to create customer",
       details: error.message,
@@ -99,9 +120,23 @@ router.put("/:id", authenticate, async (req, res) => {
   try {
     const { name, email, phone, customerType, businessType } = req.body;
 
+    // Basic validation
     if (!name || name.trim() === "") {
       return res.status(400).json({
         error: "Customer name is required",
+      });
+    }
+
+    // Enhanced validation
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        error: "Please provide a valid email address",
+      });
+    }
+
+    if (phone && !/^[\d\s\-\(\)\+]+$/.test(phone)) {
+      return res.status(400).json({
+        error: "Please provide a valid phone number",
       });
     }
 
@@ -130,6 +165,14 @@ router.put("/:id", authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating customer:", error);
+
+    // Handle specific database errors
+    if (error.message.includes("duplicate key")) {
+      return res.status(409).json({
+        error: "A customer with this email already exists",
+      });
+    }
+
     res.status(400).json({
       error: "Failed to update customer",
       details: error.message,
@@ -137,28 +180,111 @@ router.put("/:id", authenticate, async (req, res) => {
   }
 });
 
-// DELETE /api/customers/:id - Delete customer
-router.delete(
-  "/:id",
+// DELETE /api/customers/:id - Delete customer (soft delete)
+router.delete("/:id", authenticate, authorize(["admin"]), async (req, res) => {
+  try {
+    const customerId = req.params.id;
+
+    // Check if customer exists first
+    const existingCustomer = await databaseService.getCustomerById(customerId);
+    if (!existingCustomer) {
+      return res.status(404).json({
+        error: "Customer not found",
+      });
+    }
+
+    // Perform soft delete
+    const deleted = await databaseService.deleteCustomer(customerId);
+
+    if (!deleted) {
+      return res.status(500).json({
+        error: "Failed to delete customer",
+      });
+    }
+
+    res.json({
+      message: "Customer deleted successfully",
+      customer: {
+        id: customerId,
+        name: existingCustomer.name,
+        deletedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting customer:", error);
+    res.status(500).json({
+      error: "Failed to delete customer",
+      details: error.message,
+    });
+  }
+});
+
+// POST /api/customers/:id/locations - Add location to customer
+router.post("/:id/locations", authenticate, async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const locationData = req.body;
+
+    // Basic validation
+    if (!locationData.streetAddress || !locationData.city) {
+      return res.status(400).json({
+        error: "Street address and city are required",
+      });
+    }
+
+    // Check if customer exists
+    const customer = await databaseService.getCustomerById(customerId);
+    if (!customer) {
+      return res.status(404).json({
+        error: "Customer not found",
+      });
+    }
+
+    const newLocation = await databaseService.createCustomerLocation(
+      customerId,
+      locationData
+    );
+
+    res.status(201).json({
+      message: "Location added successfully",
+      location: newLocation,
+    });
+  } catch (error) {
+    console.error("Error adding location:", error);
+    res.status(400).json({
+      error: "Failed to add location",
+      details: error.message,
+    });
+  }
+});
+
+// PUT /api/customers/:customerId/locations/:locationId - Update location
+router.put(
+  "/:customerId/locations/:locationId",
   authenticate,
-  authorize(["admin", "dispatcher"]),
   async (req, res) => {
     try {
-      const deleted = await databaseService.deleteCustomer(req.params.id);
+      const { customerId, locationId } = req.params;
+      const locationData = req.body;
 
-      if (!deleted) {
-        return res.status(404).json({
-          error: "Customer not found",
+      // Basic validation
+      if (!locationData.streetAddress || !locationData.city) {
+        return res.status(400).json({
+          error: "Street address and city are required",
         });
       }
 
+      // TODO: Implement updateCustomerLocation method in databaseService
+      // For now, return a placeholder response
       res.json({
-        message: "Customer deleted successfully",
+        message: "Location update functionality coming in Phase 3",
+        locationId,
+        customerId,
       });
     } catch (error) {
-      console.error("Error deleting customer:", error);
-      res.status(500).json({
-        error: "Failed to delete customer",
+      console.error("Error updating location:", error);
+      res.status(400).json({
+        error: "Failed to update location",
         details: error.message,
       });
     }
