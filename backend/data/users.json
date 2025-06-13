@@ -1,0 +1,12 @@
+[
+  {
+    "id": "1749816122658",
+    "email": "admin@dynamicspayments.com",
+    "password": "$2b$12$Q1jLAY81SRf9JAczE0aluO3smrALgYnJp6IY7VCKbe7oMMgV6T6Uy",
+    "firstName": "Admin",
+    "lastName": "User",
+    "role": "admin",
+    "createdAt": "2025-06-13T12:02:02.658Z",
+    "isActive": true
+  }
+]
