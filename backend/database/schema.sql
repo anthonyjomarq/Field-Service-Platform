@@ -1,4 +1,3 @@
--- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
@@ -9,7 +8,7 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Users table (migrate from JSON)
+-- Users table
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL REFERENCES companies(id),
@@ -33,6 +32,7 @@ CREATE TABLE IF NOT EXISTS customers (
   phone VARCHAR(20),
   customer_type VARCHAR(20) DEFAULT 'commercial' CHECK (customer_type IN ('residential', 'commercial')),
   business_type VARCHAR(100), -- 'restaurant', 'retail', 'hotel', etc.
+  contact_info JSONB DEFAULT '[]'::jsonb, -- For multiple emails/phones
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -109,6 +109,32 @@ CREATE TABLE IF NOT EXISTS route_cache (
   distance_matrix JSONB, -- Cached distance matrix
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '24 hours')
+);
+
+-- Routes table (for saving planned routes)
+CREATE TABLE IF NOT EXISTS routes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(255) NOT NULL,
+  scheduled_date TIMESTAMP WITH TIME ZONE,
+  origin TEXT NOT NULL,
+  total_distance VARCHAR(50),
+  total_duration VARCHAR(50),
+  status VARCHAR(20) DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'completed', 'cancelled')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Route stops table
+CREATE TABLE IF NOT EXISTS route_stops (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  route_id UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES customers(id),
+  customer_name VARCHAR(255) NOT NULL,
+  address TEXT NOT NULL,
+  stop_order INTEGER NOT NULL,
+  estimated_arrival TIMESTAMP WITH TIME ZONE,
+  travel_time VARCHAR(50),
+  distance VARCHAR(50),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Performance indexes

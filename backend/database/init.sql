@@ -1,63 +1,99 @@
--- Insert default company
-INSERT INTO companies (id, name) 
-VALUES ('550e8400-e29b-41d4-a716-446655440000', 'Dynamics Payments')
-ON CONFLICT (id) DO NOTHING;
-
--- Sample customers for testing with enhanced location data
 DO $$
 DECLARE
-    company_uuid UUID := '550e8400-e29b-41d4-a716-446655440000';
     admin_user_id UUID;
-    jibarito_id UUID;
-    plaza_id UUID;
-    convento_id UUID;
+    company_id UUID;
 BEGIN
-    -- Find or create an admin user for sample data
-    SELECT id INTO admin_user_id FROM users WHERE role = 'admin' LIMIT 1;
-    
-    -- Only insert sample data if we have an admin user
-    IF admin_user_id IS NOT NULL THEN
-        -- Sample customers with better data structure
-        INSERT INTO customers (id, company_id, name, email, phone, customer_type, business_type, created_by) VALUES
-        ('11111111-1111-1111-1111-111111111111', company_uuid, 'El Jibarito Restaurant', 'manager@eljibarito.com', '787-555-0101', 'commercial', 'restaurant', admin_user_id),
-        ('22222222-2222-2222-2222-222222222222', company_uuid, 'Plaza Las Americas Store #5', 'operations@plaza.com', '787-555-0102', 'commercial', 'retail', admin_user_id),
-        ('33333333-3333-3333-3333-333333333333', company_uuid, 'Hotel El Convento', 'tech@elconvento.com', '787-555-0103', 'commercial', 'hotel', admin_user_id)
-        ON CONFLICT (id) DO NOTHING;
-
-        -- Add sample locations with coordinates (Puerto Rico locations)
+    -- Check if we already have data
+    IF NOT EXISTS (SELECT 1 FROM companies LIMIT 1) THEN
+        -- Insert default company
+        INSERT INTO companies (id, name) 
+        VALUES ('11111111-1111-1111-1111-111111111111', 'Field Service Solutions Inc.')
+        ON CONFLICT DO NOTHING;
         
-        -- El Jibarito Restaurant (Old San Juan)
+        company_id := '11111111-1111-1111-1111-111111111111';
+
+        -- Insert admin user (password: admin123)
+        INSERT INTO users (id, company_id, email, password_hash, first_name, last_name, role, is_active) 
+        VALUES (
+            '11111111-1111-1111-1111-111111111111',
+            company_id,
+            'admin@fieldservice.com',
+            '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewTFYP0qpKB.ZQ.2', -- admin123
+            'System',
+            'Administrator', 
+            'admin',
+            TRUE
+        ) ON CONFLICT DO NOTHING;
+
+        admin_user_id := '11111111-1111-1111-1111-111111111111';
+
+        -- Insert sample customers for Puerto Rico field service
+        INSERT INTO customers (id, company_id, name, email, phone, customer_type, business_type, created_by) VALUES 
+        (
+            '11111111-1111-1111-1111-111111111111',
+            company_id,
+            'La Placita Restaurant',
+            'manager@laplacita.pr',
+            '787-555-0101',
+            'commercial',
+            'restaurant',
+            admin_user_id
+        ),
+        (
+            '22222222-2222-2222-2222-222222222222', 
+            company_id,
+            'Plaza Las Américas Mall',
+            'operations@plazalasamericas.com',
+            '787-555-0202',
+            'commercial', 
+            'retail',
+            admin_user_id
+        ),
+        (
+            '33333333-3333-3333-3333-333333333333',
+            company_id,
+            'Hotel El Convento',
+            'maintenance@elconvento.com',
+            '787-555-0303',
+            'commercial',
+            'hotel', 
+            admin_user_id
+        ) ON CONFLICT DO NOTHING;
+
+        -- Insert sample locations with Puerto Rico addresses
+        
+        -- La Placita Restaurant (Old San Juan)
         INSERT INTO customer_locations (
             customer_id, address_type, street_address, city, state, postal_code, country,
             latitude, longitude, access_notes, is_primary, contact_person, service_hours
         ) VALUES (
-            '11111111-1111-1111-1111-111111111111', 
+            '11111111-1111-1111-1111-111111111111',
             'primary',
-            '280 Calle del Cristo',
+            '251 Calle de San Francisco',
             'San Juan',
-            'PR',
+            'PR', 
             '00901',
             'US',
-            18.4647, -66.1164,
-            'Located in Old San Juan, historic building. Use main entrance on Cristo Street.',
+            18.4655, -66.1057,
+            'Historic district location. Parking available on Plaza San José. Enter through main entrance facing the plaza.',
             TRUE,
             'Maria Rodriguez - Manager',
-            'Mon-Sun 11AM-10PM'
+            'Mon-Thu 5PM-12AM, Fri-Sat 5PM-2AM, Sun 5PM-11PM'
         ) ON CONFLICT DO NOTHING;
 
-        -- Plaza Las Americas (Hato Rey)
+        -- Plaza Las Américas Mall (Hato Rey)
         INSERT INTO customer_locations (
             customer_id, address_type, street_address, city, state, postal_code, country,
             latitude, longitude, access_notes, is_primary, contact_person, service_hours
         ) VALUES (
             '22222222-2222-2222-2222-222222222222',
             'primary', 
-            '525 Ave Franklin Delano Roosevelt',
+            '525 Avenida Franklin Delano Roosevelt',
             'San Juan',
             'PR',
             '00918',
             'US',
-            18.4242, -66.0748,
+            18.4267, -66.0714,
             'Large shopping mall. Use service entrance near food court. Security clearance required.',
             TRUE,
             'Carlos Mendez - Operations',
@@ -96,6 +132,6 @@ BEGIN
 
         RAISE NOTICE 'Sample data inserted successfully';
     ELSE
-        RAISE NOTICE 'No admin user found - skipping sample data insertion';
+        RAISE NOTICE 'Sample data already exists - skipping initialization';
     END IF;
 END $$;
