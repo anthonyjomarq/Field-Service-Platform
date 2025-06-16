@@ -1,0 +1,127 @@
+.sidebar {
+  position: fixed;
+  top: 60px; /* Adjust based on header height */
+  left: 0;
+  height: calc(100vh - 60px);
+  width: 250px;
+  background: #2c3e50;
+  color: #ecf0f1;
+  transition: transform 0.3s ease;
+  z-index: 100;
+  overflow-y: auto;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar.closed {
+  transform: translateX(-100%);
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid #34495e;
+  background: #1a252f;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #4caf50;
+}
+
+.welcome-message {
+  margin: 10px 0 0 0;
+  font-size: 14px;
+  color: #95a5a6;
+}
+
+.sidebar-nav {
+  padding: 20px 0;
+  flex: 1;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  padding: 15px 20px;
+  color: #ecf0f1;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-link:hover {
+  background: #34495e;
+  color: #fff;
+  padding-left: 25px;
+}
+
+.nav-link.active {
+  background: #4caf50;
+  color: #fff;
+}
+
+.nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #2e7d32;
+}
+
+.nav-icon {
+  font-size: 20px;
+  margin-right: 15px;
+  width: 24px;
+  text-align: center;
+}
+
+.nav-label {
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.sidebar-footer {
+  padding: 20px 0;
+  border-top: 1px solid #34495e;
+  margin-top: auto;
+}
+
+.settings-link {
+  border-radius: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .sidebar.open {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* When sidebar is closed, adjust main content */
+.app-layout.sidebar-open .app-content {
+  margin-left: 250px;
+  transition: margin-left 0.3s ease;
+}
+
+.app-layout.sidebar-closed .app-content {
+  margin-left: 0;
+  transition: margin-left 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .app-layout .app-content {
+    margin-left: 0 !important;
+  }
+}

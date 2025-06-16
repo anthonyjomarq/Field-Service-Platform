@@ -1,218 +1,398 @@
+import axios from "axios";
 import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "../../contexts/AuthContext";
-import { customerAPI } from "../../services/api";
-import {
-  Card,
-  Button,
-  SearchBar,
-  Select,
-  Modal,
-  Spinner,
-  ErrorMessage,
-  CustomerCard,
-  CustomerForm,
-  PlusIcon,
-} from "../common";
+import { API_ENDPOINTS, getAuthHeaders } from "../../config/api";
 
+import "./CustomerList.css";
 const CustomerList = () => {
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("");
+  const [sortField, setSortField] = useState("name");
+  const [sortDirection, setSortDirection] = useState("asc");
+  const [selectedCustomers, setSelectedCustomers] = useState([]);
 
-  // Modal states
-  const [showFormModal, setShowFormModal] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState(null);
-  const [formMode, setFormMode] = useState("create");
-
-  // Customer details modal
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-
-  // Delete confirmation
-  const [deletingCustomer, setDeletingCustomer] = useState(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  const { user } = useAuth();
-
-  // Load customers when component mounts or filters change
   useEffect(() => {
-    loadCustomers();
-  }, [searchTerm, filterType]);
+    fetchCustomers();
+  }, []);
 
-  const loadCustomers = async () => {
+  const fetchCustomers = async () => {
     try {
-      setLoading(true);
-      setError("");
-
-      const filters = {};
-      if (searchTerm) filters.search = searchTerm;
-      if (filterType) filters.customerType = filterType;
-
-      console.log("🔄 Loading customers with filters:", filters);
-      const response = await customerAPI.getCustomers(filters);
-      console.log("✅ Customers loaded:", response.customers.length);
-      setCustomers(response.customers);
-    } catch (err) {
-      setError("Failed to load customers: " + err.message);
-      console.error("Error loading customers:", err);
+      const response = await axios.get(API_ENDPOINTS.customers, {
+        headers: getAuthHeaders(),
+      });
+      setCustomers(response.data);
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+      alert("Failed to load customers");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateCustomer = () => {
-    setEditingCustomer(null);
-    setFormMode("create");
-    setShowFormModal(true);
-  };
-
-  const handleEditCustomer = async (customer) => {
-    try {
-      console.log("✏️ Editing customer:", customer.id);
-      const fullCustomer = await customerAPI.getCustomer(customer.id);
-      console.log("📄 Full customer data:", fullCustomer);
-      setEditingCustomer(fullCustomer);
-      setFormMode("edit");
-      setShowFormModal(true);
-    } catch (err) {
-      setError("Failed to load customer details: " + err.message);
-    }
-  };
-
-  const handleSaveCustomer = async (savedCustomer) => {
-    setShowFormModal(false);
-    setEditingCustomer(null);
-    await loadCustomers(); // Reload the list
-  };
-
-  const handleDeleteClick = (customer) => {
-    setDeletingCustomer(customer);
-    setShowDeleteModal(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    try {
-      console.log("🗑️ Deleting customer:", deletingCustomer.id);
-      await customerAPI.deleteCustomer(deletingCustomer.id);
-      await loadCustomers();
-      setShowDeleteModal(false);
-      setDeletingCustomer(null);
-      console.log("✅ Customer deleted and list reloaded");
-    } catch (err) {
-      setError("Failed to delete customer: " + err.message);
-    }
-  };
-
-  const clearError = () => setError("");
-
-  const filteredCustomers = useMemo(() => {
-    if (!customers) return [];
-
-    return customers.filter((customer) => {
-      const matchesSearch =
-        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesType = !filterType || customer.customerType === filterType;
-
-      return matchesSearch && matchesType;
+  // Get all unique tags from customers
+  const allTags = useMemo(() => {
+    const tags = new Set();
+    customers.forEach((customer) => {
+      customer.tags?.forEach((tag) => tags.add(tag));
     });
-  }, [customers, searchTerm, filterType]);
+    return Array.from(tags).sort();
+  }, [customers]);
 
-  if (loading)
-    return (
-      <div className="loading-container">
-        <Spinner size="lg" />
-      </div>
+  // Filter and sort customers
+  const filteredCustomers = useMemo(() => {
+    let filtered = [...customers];
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (customer) =>
+          customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          customer.phone.includes(searchTerm) ||
+          (customer.company &&
+            customer.company.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(
+        (customer) => customer.status === statusFilter
+      );
+    }
+
+    // Tag filter
+    if (tagFilter) {
+      filtered = filtered.filter((customer) =>
+        customer.tags?.includes(tagFilter)
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
+
+      // Handle null/undefined values
+      if (aValue == null) aValue = "";
+      if (bValue == null) bValue = "";
+
+      // Convert to lowercase for string comparison
+      if (typeof aValue === "string") aValue = aValue.toLowerCase();
+      if (typeof bValue === "string") bValue = bValue.toLowerCase();
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [
+    customers,
+    searchTerm,
+    statusFilter,
+    tagFilter,
+    sortField,
+    sortDirection,
+  ]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedCustomers(filteredCustomers.map((c) => c._id));
+    } else {
+      setSelectedCustomers([]);
+    }
+  };
+
+  const handleSelectCustomer = (customerId) => {
+    setSelectedCustomers((prev) =>
+      prev.includes(customerId)
+        ? prev.filter((id) => id !== customerId)
+        : [...prev, customerId]
     );
-  if (error) return <ErrorMessage error={error} onRetry={loadCustomers} />;
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedCustomers.length === 0) return;
+
+    if (
+      window.confirm(
+        `Are you sure you want to delete ${selectedCustomers.length} customer(s)?`
+      )
+    ) {
+      try {
+        await Promise.all(
+          selectedCustomers.map((id) => axios.delete(`/api/customers/${id}`))
+        );
+        alert("Customers deleted successfully");
+        fetchCustomers();
+        setSelectedCustomers([]);
+      } catch (error) {
+        console.error("Error deleting customers:", error);
+        alert("Failed to delete some customers");
+      }
+    }
+  };
+
+  const handleDeleteCustomer = async (id) => {
+    if (window.confirm("Are you sure you want to delete this customer?")) {
+      try {
+        await axios.delete(`/api/customers/${id}`);
+        alert("Customer deleted successfully");
+        fetchCustomers();
+      } catch (error) {
+        console.error("Error deleting customer:", error);
+        alert("Failed to delete customer");
+      }
+    }
+  };
+
+  const exportToCSV = () => {
+    const headers = [
+      "Name",
+      "Email",
+      "Phone",
+      "Company",
+      "Status",
+      "Tags",
+      "Primary Address",
+    ];
+    const csvData = filteredCustomers.map((customer) => {
+      const primaryAddress =
+        customer.addresses?.find((a) => a.isPrimary) || customer.addresses?.[0];
+      return [
+        customer.name,
+        customer.email,
+        customer.phone,
+        customer.company || "",
+        customer.status,
+        (customer.tags || []).join("; "),
+        primaryAddress
+          ? `${primaryAddress.street}, ${primaryAddress.city}, ${primaryAddress.state} ${primaryAddress.zip}`
+          : "",
+      ];
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...csvData.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `customers_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+  };
+
+  if (loading) {
+    return <div className="loading">Loading customers...</div>;
+  }
 
   return (
-    <div className="customer-list">
-      <Card>
-        <Card.Header
-          actions={
-            <Button onClick={handleCreateCustomer} icon={<PlusIcon />}>
-              Add Customer
-            </Button>
-          }
+    <div className="customer-list-container">
+      <div className="list-header">
+        <h1>Customers</h1>
+        <button
+          className="btn btn-primary"
+          onClick={() => navigate("/customers/new")}
         >
-          <h2>Customers ({filteredCustomers.length})</h2>
-        </Card.Header>
+          Add New Customer
+        </button>
+      </div>
 
-        <Card.Body>
-          <div className="list-controls">
-            <SearchBar
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search customers..."
-            />
-
-            <Select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              options={[
-                { value: "", label: "All Types" },
-                { value: "residential", label: "Residential" },
-                { value: "commercial", label: "Commercial" },
-              ]}
-            />
-          </div>
-
-          <div className="customer-grid">
-            {filteredCustomers.map((customer) => (
-              <CustomerCard
-                key={customer.id}
-                customer={customer}
-                onEdit={() => handleEditCustomer(customer)}
-                onDelete={() => handleDeleteClick(customer)}
-              />
-            ))}
-          </div>
-        </Card.Body>
-      </Card>
-
-      <Modal
-        isOpen={showFormModal}
-        onClose={() => {
-          setShowFormModal(false);
-          setEditingCustomer(null);
-        }}
-        title={editingCustomer ? "Edit Customer" : "New Customer"}
-        size="lg"
-      >
-        <CustomerForm
-          customer={editingCustomer}
-          onSave={handleSaveCustomer}
-          onCancel={() => setShowFormModal(false)}
-        />
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        title="Confirm Delete"
-      >
-        <p>Are you sure you want to delete {deletingCustomer?.name}?</p>
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            justifyContent: "flex-end",
-            marginTop: "20px",
-          }}
-        >
-          <Button onClick={() => setShowDeleteModal(false)} variant="secondary">
-            Cancel
-          </Button>
-          <Button onClick={handleDeleteConfirm} variant="danger">
-            Delete
-          </Button>
+      {/* Filters and Search */}
+      <div className="filters-section">
+        <div className="search-bar">
+          <input
+            type="text"
+            placeholder="Search by name, email, phone, or company..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
         </div>
-      </Modal>
+
+        <div className="filters">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="filter-select"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="pending">Pending</option>
+          </select>
+
+          <select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            className="filter-select"
+          >
+            <option value="">All Tags</option>
+            {allTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+
+          <button onClick={exportToCSV} className="btn btn-export">
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Bulk Actions */}
+      {selectedCustomers.length > 0 && (
+        <div className="bulk-actions">
+          <span>{selectedCustomers.length} customer(s) selected</span>
+          <button onClick={handleBulkDelete} className="btn btn-danger">
+            Delete Selected
+          </button>
+        </div>
+      )}
+
+      {/* Customer Table */}
+      <div className="table-container">
+        <table className="customers-table">
+          <thead>
+            <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  checked={
+                    selectedCustomers.length === filteredCustomers.length &&
+                    filteredCustomers.length > 0
+                  }
+                  onChange={handleSelectAll}
+                />
+              </th>
+              <th onClick={() => handleSort("name")} className="sortable">
+                Name{" "}
+                {sortField === "name" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("email")} className="sortable">
+                Email{" "}
+                {sortField === "email" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th>Phone</th>
+              <th onClick={() => handleSort("company")} className="sortable">
+                Company{" "}
+                {sortField === "company" &&
+                  (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th>Status</th>
+              <th>Tags</th>
+              <th>Primary Address</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredCustomers.length === 0 ? (
+              <tr>
+                <td colSpan="9" className="no-data">
+                  {searchTerm || statusFilter !== "all" || tagFilter
+                    ? "No customers found matching your filters"
+                    : 'No customers yet. Click "Add New Customer" to get started.'}
+                </td>
+              </tr>
+            ) : (
+              filteredCustomers.map((customer) => {
+                const primaryAddress =
+                  customer.addresses?.find((a) => a.isPrimary) ||
+                  customer.addresses?.[0];
+                return (
+                  <tr key={customer._id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedCustomers.includes(customer._id)}
+                        onChange={() => handleSelectCustomer(customer._id)}
+                      />
+                    </td>
+                    <td className="name-cell">
+                      <button
+                        className="link-button"
+                        onClick={() => navigate(`/customers/${customer._id}`)}
+                      >
+                        {customer.name}
+                      </button>
+                    </td>
+                    <td>{customer.email}</td>
+                    <td>{customer.phone}</td>
+                    <td>{customer.company || "-"}</td>
+                    <td>
+                      <span className={`status status-${customer.status}`}>
+                        {customer.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="tags-cell">
+                        {customer.tags?.map((tag) => (
+                          <span key={tag} className="tag-badge">
+                            {tag}
+                          </span>
+                        )) || "-"}
+                      </div>
+                    </td>
+                    <td className="address-cell">
+                      {primaryAddress ? (
+                        <span
+                          title={`${primaryAddress.street}, ${primaryAddress.city}, ${primaryAddress.state} ${primaryAddress.zip}`}
+                        >
+                          {primaryAddress.city}, {primaryAddress.state}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="actions-cell">
+                      <button
+                        onClick={() =>
+                          navigate(`/customers/${customer._id}/edit`)
+                        }
+                        className="btn-action btn-edit"
+                        title="Edit"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCustomer(customer._id)}
+                        className="btn-action btn-delete"
+                        title="Delete"
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Summary */}
+      <div className="list-summary">
+        Showing {filteredCustomers.length} of {customers.length} customers
+      </div>
     </div>
   );
 };

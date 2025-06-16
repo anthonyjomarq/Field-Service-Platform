@@ -1,8 +1,9 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../contexts/AuthContext";
 
-const Login = ({ onSwitchToRegister, onLoginSuccess }) => {
+const Login = () => {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -11,6 +12,7 @@ const Login = ({ onSwitchToRegister, onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setFormData({
@@ -25,14 +27,20 @@ const Login = ({ onSwitchToRegister, onLoginSuccess }) => {
     setIsLoading(true);
 
     const result = await login(formData.email, formData.password);
+    console.log("Login result:", result);
 
     if (result.success) {
-      onLoginSuccess();
+      console.log("Navigating to /dashboard");
+      navigate("/dashboard");
     } else {
       setError(result.error);
     }
 
     setIsLoading(false);
+  };
+
+  const handleSwitchToRegister = () => {
+    navigate("/register");
   };
 
   return (
@@ -75,7 +83,7 @@ const Login = ({ onSwitchToRegister, onLoginSuccess }) => {
         Don't have an account?{" "}
         <button
           className="link-button"
-          onClick={onSwitchToRegister}
+          onClick={handleSwitchToRegister}
           style={{
             background: "none",
             border: "none",
